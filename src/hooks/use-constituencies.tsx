@@ -3,8 +3,8 @@ import { supabase } from '@/integrations/supabase/client';
 
 export interface Constituency {
   id: string;
-  constituency_name: string;
-  constituency_code: string;
+  name: string;
+  code: string;
   district: string;
   division: string;
   created_at: string;
@@ -17,7 +17,7 @@ export function useConstituencies() {
       const { data, error } = await supabase
         .from('constituencies' as any)
         .select('*')
-        .order('constituency_code');
+        .order('code');
       if (error) throw error;
       return (data || []) as unknown as Constituency[];
     },

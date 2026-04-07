@@ -11,18 +11,16 @@ export interface LivenessState {
 }
 
 interface FacePosition {
-  yaw: number; // left-right rotation (-1 to 1)
-  pitch: number; // up-down rotation (-1 to 1)
+  yaw: number;
+  pitch: number;
   eyeAspectRatio: number;
 }
 
-// Eye aspect ratio threshold for blink detection
-const EAR_THRESHOLD = 0.25;
-const BLINK_CONSECUTIVE_FRAMES = 2;
+const EAR_THRESHOLD = 0.30;
+const BLINK_CONSECUTIVE_FRAMES = 1;
 
-// Head rotation thresholds
-const YAW_THRESHOLD = 0.15; // For left/right turn detection
-const PITCH_THRESHOLD = 0.12; // For nod detection
+const YAW_THRESHOLD = 0.08;
+const PITCH_THRESHOLD = 0.08;
 
 export class LivenessDetector {
   private blinkCounter = 0;
@@ -30,10 +28,9 @@ export class LivenessDetector {
   private baselinePosition: FacePosition | null = null;
   private consecutiveBlinkFrames = 0;
   private challengeStartTime = 0;
-  private readonly challengeTimeout = 8000; // 8 seconds per challenge
+  private readonly challengeTimeout = 8000;
 
-  // Challenges to complete for liveness
-  private readonly requiredChallenges: LivenessChallenge[] = ['blink', 'turn-left'];
+  private readonly requiredChallenges: LivenessChallenge[] = ['blink', 'turn-left', 'turn-right', 'nod'];
   private completedChallenges: Set<LivenessChallenge> = new Set();
   private currentChallengeIndex = 0;
 
@@ -71,23 +68,16 @@ export class LivenessDetector {
   }
 
   private calculateEyeAspectRatio(landmarks: faceapi.FaceLandmarks68): number {
-    // Get eye landmarks
     const leftEye = landmarks.getLeftEye();
     const rightEye = landmarks.getRightEye();
 
-    // Calculate EAR for both eyes
     const leftEAR = this.getEAR(leftEye);
     const rightEAR = this.getEAR(rightEye);
 
-    // Average EAR
     return (leftEAR + rightEAR) / 2;
   }
 
   private getEAR(eye: faceapi.Point[]): number {
-    // Eye aspect ratio calculation
-    // EAR = (||p2-p6|| + ||p3-p5||) / (2 * ||p1-p4||)
-    // Where p1-p6 are the 6 eye landmark points
-
     const vertical1 = this.distance(eye[1], eye[5]);
     const vertical2 = this.distance(eye[2], eye[4]);
     const horizontal = this.distance(eye[0], eye[3]);
@@ -101,13 +91,11 @@ export class LivenessDetector {
   }
 
   private estimateHeadPose(landmarks: faceapi.FaceLandmarks68): { yaw: number; pitch: number } {
-    // Get key facial points for head pose estimation
     const nose = landmarks.getNose();
     const leftEye = landmarks.getLeftEye();
     const rightEye = landmarks.getRightEye();
     const jaw = landmarks.getJawOutline();
 
-    // Calculate eye center
     const leftEyeCenter = this.getCenter(leftEye);
     const rightEyeCenter = this.getCenter(rightEye);
     const eyeCenter = {
@@ -115,20 +103,16 @@ export class LivenessDetector {
       y: (leftEyeCenter.y + rightEyeCenter.y) / 2,
     };
 
-    // Nose tip
-    const noseTip = nose[6]; // Bottom of nose
+    const noseTip = nose[6];
 
-    // Face width using jaw
     const faceWidth = this.distance(jaw[0], jaw[16]);
 
-    // Yaw estimation: nose offset from face center
     const faceCenter = (jaw[0].x + jaw[16].x) / 2;
     const noseOffset = (noseTip.x - faceCenter) / (faceWidth / 2);
     const yaw = Math.max(-1, Math.min(1, noseOffset));
 
-    // Pitch estimation: vertical position of nose relative to eyes
     const eyeToNose = noseTip.y - eyeCenter.y;
-    const expectedEyeToNose = faceWidth * 0.35; // Approximate ratio
+    const expectedEyeToNose = faceWidth * 0.35;
     const pitchOffset = (eyeToNose - expectedEyeToNose) / expectedEyeToNose;
     const pitch = Math.max(-1, Math.min(1, pitchOffset * 0.5));
 
@@ -147,7 +131,7 @@ export class LivenessDetector {
     detection: faceapi.WithFaceLandmarks<{ detection: faceapi.FaceDetection }, faceapi.FaceLandmarks68>
   ): Promise<LivenessState> {
     const challenge = this.getCurrentChallenge();
-    
+
     if (!challenge) {
       return {
         currentChallenge: null,
@@ -158,7 +142,6 @@ export class LivenessDetector {
       };
     }
 
-    // Check timeout
     if (this.isChallengeTimedOut()) {
       return {
         currentChallenge: challenge,
@@ -173,7 +156,6 @@ export class LivenessDetector {
     const ear = this.calculateEyeAspectRatio(landmarks);
     const headPose = this.estimateHeadPose(landmarks);
 
-    // Set baseline if not set
     if (!this.baselinePosition) {
       this.baselinePosition = {
         yaw: headPose.yaw,
@@ -187,56 +169,53 @@ export class LivenessDetector {
 
     switch (challenge) {
       case 'blink':
-        // Detect blink by checking if EAR drops below threshold
         if (ear < EAR_THRESHOLD) {
           this.consecutiveBlinkFrames++;
         } else {
           if (this.consecutiveBlinkFrames >= BLINK_CONSECUTIVE_FRAMES) {
             this.blinkCounter++;
-            if (this.blinkCounter >= 1) {
-              challengeComplete = true;
-            }
+            challengeComplete = true;
           }
           this.consecutiveBlinkFrames = 0;
         }
-        message = this.blinkCounter > 0 
-          ? `চোখ পিটপিট করুন (${this.blinkCounter}/1 সম্পন্ন)` 
+        message = this.blinkCounter > 0
+          ? `চোখ পিটপিট করুন (${this.blinkCounter}/1 সম্পন্ন)`
           : 'চোখ পিটপিট করুন';
         break;
 
-      case 'turn-left':
-        // Detect left head turn
+      case 'turn-left': {
         const yawLeft = headPose.yaw - (this.baselinePosition?.yaw || 0);
-        if (yawLeft < -YAW_THRESHOLD) {
+        if (yawLeft > YAW_THRESHOLD) {
           challengeComplete = true;
         }
         message = 'বাম দিকে মাথা ঘোরান';
         break;
+      }
 
-      case 'turn-right':
-        // Detect right head turn
+      case 'turn-right': {
         const yawRight = headPose.yaw - (this.baselinePosition?.yaw || 0);
-        if (yawRight > YAW_THRESHOLD) {
+        if (yawRight < -YAW_THRESHOLD) {
           challengeComplete = true;
         }
         message = 'ডান দিকে মাথা ঘোরান';
         break;
+      }
 
-      case 'nod':
-        // Detect head nod (up-down movement)
+      case 'nod': {
         const pitchDiff = Math.abs(headPose.pitch - (this.baselinePosition?.pitch || 0));
         if (pitchDiff > PITCH_THRESHOLD) {
           challengeComplete = true;
         }
         message = 'মাথা উপরে-নিচে নাড়ান';
         break;
+      }
     }
 
     if (challengeComplete) {
       this.completedChallenges.add(challenge);
       this.currentChallengeIndex++;
       this.challengeStartTime = Date.now();
-      this.baselinePosition = null; // Reset baseline for next challenge
+      this.baselinePosition = null;
       this.blinkCounter = 0;
       this.consecutiveBlinkFrames = 0;
     }

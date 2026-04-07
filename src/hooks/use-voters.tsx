@@ -10,17 +10,18 @@ interface VoterStats {
 }
 
 async function fetchVoterStats(): Promise<VoterStats> {
-  const { data, error } = await supabase
-    .from('voters')
-    .select('is_verified, has_voted');
-
-  if (error) throw error;
+  const [totalRes, verifiedRes, pendingRes, votedRes] = await Promise.all([
+    supabase.from('voters_master' as any).select('*', { count: 'exact', head: true }),
+    supabase.from('voters_master' as any).select('*', { count: 'exact', head: true }).eq('is_verified', true),
+    supabase.from('voters_master' as any).select('*', { count: 'exact', head: true }).eq('is_verified', false),
+    supabase.from('voters_master' as any).select('*', { count: 'exact', head: true }).eq('has_voted', true),
+  ]);
 
   return {
-    total: data?.length || 0,
-    verified: data?.filter(v => v.is_verified).length || 0,
-    pending: data?.filter(v => !v.is_verified).length || 0,
-    voted: data?.filter(v => v.has_voted).length || 0,
+    total: totalRes.count || 0,
+    verified: verifiedRes.count || 0,
+    pending: pendingRes.count || 0,
+    voted: votedRes.count || 0,
   };
 }
 
@@ -28,8 +29,8 @@ export function useVoterStats() {
   return useQuery({
     queryKey: ['voter-stats'],
     queryFn: fetchVoterStats,
-    staleTime: 30 * 1000, // 30 seconds
-    refetchInterval: 60 * 1000, // Auto-refresh every minute
+    staleTime: 30 * 1000,
+    refetchInterval: 60 * 1000,
   });
 }
 
@@ -37,21 +38,21 @@ interface Voter {
   id: string;
   voter_id: string;
   full_name: string;
-  department: string | null;
-  session_year: string | null;
-  is_verified: boolean;
-  has_voted: boolean;
+  is_verified: boolean | null;
+  has_voted: boolean | null;
+  photo_url?: string | null;
+  updated_at?: string | null;
   created_at: string;
 }
 
 async function fetchVoters(): Promise<Voter[]> {
   const { data, error } = await supabase
-    .from('voters')
+    .from('voters_master' as any)
     .select('*')
     .order('created_at', { ascending: false });
 
   if (error) throw error;
-  return data || [];
+  return (data || []) as unknown as Voter[];
 }
 
 export function useVoters() {
@@ -62,7 +63,6 @@ export function useVoters() {
   });
 }
 
-// Recent voter type (subset for activity feed)
 interface RecentVoter {
   id: string;
   voter_id: string;
@@ -71,30 +71,27 @@ interface RecentVoter {
   created_at: string;
 }
 
-// Fetch recent voters for activity feed
 async function fetchRecentVoters(limit: number): Promise<RecentVoter[]> {
   const { data, error } = await supabase
-    .from('voters')
+    .from('voters_master' as any)
     .select('id, voter_id, full_name, is_verified, created_at')
     .order('created_at', { ascending: false })
     .limit(limit);
 
   if (error) throw error;
-  return data || [];
+  return (data || []) as unknown as RecentVoter[];
 }
 
 export function useRecentVoters(limit: number = 5) {
   const queryClient = useQueryClient();
 
-  // Subscribe to real-time changes on voters_master
   useEffect(() => {
     const channel = supabase
-      .channel('voters-realtime')
+      .channel('voters_master-realtime')
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'voters' },
+        { event: '*', schema: 'public', table: 'voters_master' },
         () => {
-          // Invalidate queries to trigger refetch
           queryClient.invalidateQueries({ queryKey: ['recent-voters'] });
           queryClient.invalidateQueries({ queryKey: ['voter-stats'] });
           queryClient.invalidateQueries({ queryKey: ['voters'] });

@@ -36,7 +36,7 @@ export default function AdminVoters() {
   const handleVerify = useCallback(async (id: string) => {
     try {
       const { error } = await supabase
-        .from('voters')
+        .from('voters_master')
         .update({ is_verified: true })
         .eq('id', id);
 
@@ -56,7 +56,7 @@ export default function AdminVoters() {
     
     try {
       const { error } = await supabase
-        .from('voters')
+        .from('voters_master')
         .delete()
         .eq('id', id);
 

@@ -23,8 +23,22 @@ export function useAdminAuth() {
   const checkAdminStatus = useCallback(async () => {
     try {
       setState(prev => ({ ...prev, isLoading: true }));
+
+      // Check demo session
+      const isDemoSession = sessionStorage.getItem('bd-vote-admin-demo-session');
       const { data: { user } } = await supabase.auth.getUser();
-      
+
+      if (isDemoSession && !user) {
+        setState({
+          isAdmin: true,
+          isLoading: false,
+          isAuthenticated: true,
+          userId: 'demo-admin-id',
+          userEmail: 'admin@bdvote.com',
+        });
+        return;
+      }
+
       if (!user) {
         setState({
           isAdmin: false,
@@ -89,6 +103,7 @@ export function useAdminAuth() {
   }, [checkAdminStatus]);
 
   const signOut = useCallback(async () => {
+    sessionStorage.removeItem('bd-vote-admin-demo-session');
     await supabase.auth.signOut();
     setState({
       isAdmin: false,

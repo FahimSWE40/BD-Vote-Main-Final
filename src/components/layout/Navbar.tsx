@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { Link, useLocation } from "react-router-dom";
-import { Menu, X } from "lucide-react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Menu, X, ChevronDown, Shield, UserCircle, LogIn, HardHat, Gavel } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
@@ -8,6 +8,12 @@ import {
   SheetContent,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import bdVoteLogo from "@/assets/bd-vote-logo.png";
 
 interface NavbarProps {
@@ -16,6 +22,7 @@ interface NavbarProps {
 
 export function Navbar({ variant = 'landing' }: NavbarProps) {
   const location = useLocation();
+  const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
 
   const landingLinks = [
@@ -32,6 +39,13 @@ export function Navbar({ variant = 'landing' }: NavbarProps) {
   ];
 
   const links = variant === 'landing' ? landingLinks : appLinks;
+
+  const loginOptions = [
+    { label: "প্রার্থী", href: "/candidate/login", icon: UserCircle },
+    { label: "আইন-শৃঙ্খলা", href: "/official/login?role=law", icon: Gavel },
+    { label: "প্রযুক্তিগত", href: "/official/login?role=tech", icon: HardHat },
+    { label: "অ্যাডমিন", href: "/admin/login", icon: Shield },
+  ];
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border bg-card/80 backdrop-blur-md">
@@ -89,10 +103,29 @@ export function Navbar({ variant = 'landing' }: NavbarProps) {
         </nav>
 
         <div className="flex items-center gap-2 sm:gap-3">
-          <Button asChild size="sm" className="hidden sm:inline-flex">
-            <Link to="/verification">লগইন</Link>
-          </Button>
-          
+          {/* Desktop Login Dropdown */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm" className="hidden sm:inline-flex items-center gap-1">
+                <LogIn className="size-4" />
+                লগইন
+                <ChevronDown className="size-3" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              {loginOptions.map((opt) => (
+                <DropdownMenuItem
+                  key={opt.href}
+                  onClick={() => navigate(opt.href)}
+                  className="flex items-center gap-2 cursor-pointer"
+                >
+                  <opt.icon className="size-4" />
+                  {opt.label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
           {/* Mobile Menu */}
           <Sheet open={isOpen} onOpenChange={setIsOpen}>
             <SheetTrigger asChild className="md:hidden">
@@ -107,7 +140,7 @@ export function Navbar({ variant = 'landing' }: NavbarProps) {
                   <img src={bdVoteLogo} alt="BD Vote" className="h-9 w-auto" />
                   <span className="text-xl font-bold">BD Vote</span>
                 </div>
-                
+
                 <nav className="flex flex-col gap-2">
                   {links.map((link) => {
                     const isHash = link.href.includes("#");
@@ -156,12 +189,18 @@ export function Navbar({ variant = 'landing' }: NavbarProps) {
                   })}
                 </nav>
 
-                <div className="mt-auto pt-8">
-                  <Button asChild className="w-full" size="lg">
-                    <Link to="/verification" onClick={() => setIsOpen(false)}>
-                      লগইন
-                    </Link>
-                  </Button>
+                <div className="mt-auto pt-8 flex flex-col gap-2">
+                  {loginOptions.map((opt) => (
+                    <Button
+                      key={opt.href}
+                      variant="outline"
+                      className="w-full justify-start gap-2"
+                      onClick={() => { setIsOpen(false); navigate(opt.href); }}
+                    >
+                      <opt.icon className="size-4" />
+                      {opt.label} লগইন
+                    </Button>
+                  ))}
                 </div>
               </div>
             </SheetContent>

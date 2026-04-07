@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { AdminLayout } from '@/components/admin/AdminLayout';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -17,17 +17,17 @@ export default function AdminConstituencies() {
   const addMutation = useAddConstituency();
   const deleteMutation = useDeleteConstituency();
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [form, setForm] = useState({ constituency_name: '', constituency_code: '', district: '', division: '' });
+  const [form, setForm] = useState({ name: '', code: '', district: '', division: '' });
 
   const handleAdd = async () => {
-    if (!form.constituency_name || !form.constituency_code || !form.district || !form.division) {
+    if (!form.name || !form.code || !form.district || !form.division) {
       toast.error('সকল ফিল্ড পূরণ করুন');
       return;
     }
     try {
       await addMutation.mutateAsync(form);
       toast.success('নির্বাচনী এলাকা যোগ করা হয়েছে');
-      setForm({ constituency_name: '', constituency_code: '', district: '', division: '' });
+      setForm({ name: '', code: '', district: '', division: '' });
       setDialogOpen(false);
     } catch (e: any) {
       toast.error(e.message || 'সমস্যা হয়েছে');
@@ -66,11 +66,11 @@ export default function AdminConstituencies() {
               <div className="space-y-4">
                 <div className="space-y-2">
                   <Label>এলাকার নাম</Label>
-                  <Input placeholder="ঢাকা-৮" value={form.constituency_name} onChange={e => setForm(f => ({ ...f, constituency_name: e.target.value }))} />
+                  <Input placeholder="ঢাকা-৮" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
                 </div>
                 <div className="space-y-2">
                   <Label>কোড</Label>
-                  <Input placeholder="DHK-8" value={form.constituency_code} onChange={e => setForm(f => ({ ...f, constituency_code: e.target.value }))} />
+                  <Input placeholder="DHK-8" value={form.code} onChange={e => setForm(f => ({ ...f, code: e.target.value }))} />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-2">
@@ -123,12 +123,12 @@ export default function AdminConstituencies() {
               <TableBody>
                 {constituencies.map(c => (
                   <TableRow key={c.id}>
-                    <TableCell><Badge variant="outline">{c.constituency_code}</Badge></TableCell>
-                    <TableCell className="font-medium">{c.constituency_name}</TableCell>
+                    <TableCell><Badge variant="outline">{c.code}</Badge></TableCell>
+                    <TableCell className="font-medium">{c.name}</TableCell>
                     <TableCell className="hidden sm:table-cell">{c.district}</TableCell>
                     <TableCell className="hidden sm:table-cell">{c.division}</TableCell>
                     <TableCell>
-                      <Button variant="ghost" size="sm" className="text-destructive" onClick={() => handleDelete(c.id, c.constituency_name)}>
+                      <Button variant="ghost" size="sm" className="text-destructive" onClick={() => handleDelete(c.id, c.name)}>
                         <Trash2 className="size-4" />
                       </Button>
                     </TableCell>

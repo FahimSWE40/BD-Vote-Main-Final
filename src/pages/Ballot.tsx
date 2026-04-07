@@ -28,6 +28,8 @@ export default function Ballot() {
   const { data: candidates, isLoading: candidatesLoading, error: candidatesError } = useCandidates();
   const { data: election } = useActiveElection();
 
+  const voterData = JSON.parse(sessionStorage.getItem('verified_voter') || 'null');
+
   // Get verified voter ID from sessionStorage (set during verification)
   const verifiedVoterId = sessionStorage.getItem('verified_voter_id');
 
@@ -306,6 +308,7 @@ export default function Ballot() {
         onOpenChange={setShowFaceVerification}
         onVerificationComplete={handleVerificationComplete}
         candidateName={selectedCandidate?.full_name || ''}
+        voter={voterData}
       />
     </div>
   );

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ScanFace, CheckCircle, Camera, RotateCcw, XCircle, Shield, Info } from "lucide-react";
+import { CheckCircle, Camera, RotateCcw, XCircle, Shield, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import {
@@ -9,13 +9,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { cn } from "@/lib/utils";
+import { verifyFaceAgainstImage } from "@/lib/face-verification";
 
 interface FaceVerificationModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onVerificationComplete: () => void;
   candidateName: string;
+  voter: any;
 }
 
 type VerificationStatus = 'idle' | 'scanning' | 'success' | 'failed';
@@ -25,60 +26,83 @@ export function FaceVerificationModal({
   onOpenChange,
   onVerificationComplete,
   candidateName,
+  voter,
 }: FaceVerificationModalProps) {
   const [status, setStatus] = useState<VerificationStatus>('idle');
   const [progress, setProgress] = useState(0);
+  const [message, setMessage] = useState('');
+  const [attempts, setAttempts] = useState(0);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
 
-  // Reset state when modal opens
   useEffect(() => {
     if (open) {
       setStatus('idle');
       setProgress(0);
+      setMessage('');
+      setAttempts(0);
+      startCamera();
     }
+    return () => {
+      if (!open) stopCamera();
+    };
   }, [open]);
 
-  useEffect(() => {
-    if (open) {
-      navigator.mediaDevices.getUserMedia({ video: true })
-        .then((stream) => {
-          if (videoRef.current) {
-            videoRef.current.srcObject = stream;
-          }
-        })
-        .catch((err) => {
-          console.error("Camera error:", err);
-        });
+  const startCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+    } catch (err) {
+      console.error("Camera error:", err);
     }
-  }, [open]);
-
-  const handleScan = () => {
-    setStatus('scanning');
-    setProgress(0);
-
-    const interval = setInterval(() => {
-      setProgress(prev => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          // Simulate 95% success rate
-          const isSuccess = Math.random() > 0.05;
-          setStatus(isSuccess ? 'success' : 'failed');
-          
-          if (isSuccess) {
-            setTimeout(() => {
-              onVerificationComplete();
-            }, 1500);
-          }
-          return 100;
-        }
-        return prev + 4;
-      });
-    }, 100);
   };
 
-  const handleRetry = () => {
+  const stopCamera = () => {
+    streamRef.current?.getTracks().forEach(track => track.stop());
+    streamRef.current = null;
+  };
+
+  const handleScan = async () => {
+    if (!videoRef.current || !voter?.photo_url) return;
+
+    setStatus('scanning');
+    setProgress(30);
+
+    try {
+      const result = await verifyFaceAgainstImage(videoRef.current, voter.photo_url, 55);
+      setProgress(100);
+      setMessage(result.message);
+
+      if (result.success) {
+        setStatus('success');
+        setTimeout(() => {
+          onVerificationComplete();
+        }, 1500);
+      } else {
+        const newAttempts = attempts + 1;
+        setAttempts(newAttempts);
+        if (newAttempts >= 3) {
+          setStatus('failed');
+        } else {
+          setStatus('failed');
+        }
+      }
+    } catch (err) {
+      setStatus('failed');
+      setMessage('যাচাই করতে সমস্যা হয়েছে। আবার চেষ্টা করুন।');
+    }
+  };
+
+  const handleRetry = async () => {
     setStatus('idle');
     setProgress(0);
+    setMessage('');
+    stopCamera();
+    await new Promise(r => setTimeout(r, 300));
+    await startCamera();
   };
 
   const handleClose = () => {
@@ -86,11 +110,6 @@ export function FaceVerificationModal({
       stopCamera();
       onOpenChange(false);
     }
-  };
-
-  const stopCamera = () => {
-    const stream = videoRef.current?.srcObject as MediaStream;
-    stream?.getTracks().forEach(track => track.stop());
   };
 
   return (
@@ -116,6 +135,7 @@ export function FaceVerificationModal({
                 <CheckCircle className="size-8 sm:size-10 text-success" />
               </div>
               <h3 className="text-lg sm:text-xl font-bold mb-2 text-success">যাচাইকরণ সফল!</h3>
+              <p className="text-sm text-muted-foreground mb-2">{message}</p>
               <p className="text-sm text-muted-foreground mb-4">
                 আপনার ভোট <strong>{candidateName}</strong>-এর পক্ষে জমা হচ্ছে...
               </p>
@@ -135,17 +155,22 @@ export function FaceVerificationModal({
                 <XCircle className="size-8 sm:size-10 text-destructive" />
               </div>
               <h3 className="text-lg sm:text-xl font-bold mb-2 text-destructive">যাচাইকরণ ব্যর্থ</h3>
-              <p className="text-sm text-muted-foreground mb-6">
-                চেহারা মিলেনি। অনুগ্রহ করে আবার চেষ্টা করুন।
-              </p>
+              <p className="text-sm text-muted-foreground mb-2">{message}</p>
+              {attempts < 3 && (
+                <p className="text-sm text-muted-foreground mb-6">
+                  চেষ্টা {attempts}/3 — অনুগ্রহ করে আবার চেষ্টা করুন।
+                </p>
+              )}
               <div className="flex gap-3 justify-center">
                 <Button variant="outline" onClick={handleClose}>
                   বাতিল করুন
                 </Button>
-                <Button onClick={handleRetry}>
-                  <RotateCcw className="size-4 mr-2" />
-                  আবার চেষ্টা করুন
-                </Button>
+                {attempts < 3 && (
+                  <Button onClick={handleRetry}>
+                    <RotateCcw className="size-4 mr-2" />
+                    আবার চেষ্টা করুন
+                  </Button>
+                )}
               </div>
             </motion.div>
           ) : (
@@ -155,7 +180,6 @@ export function FaceVerificationModal({
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
             >
-              {/* Info Banner */}
               <div className="bg-primary/5 border border-primary/20 rounded-lg p-3 mb-4">
                 <div className="flex items-start gap-2">
                   <Info className="size-4 text-primary shrink-0 mt-0.5" />
@@ -166,12 +190,13 @@ export function FaceVerificationModal({
               </div>
 
               {/* Camera Preview */}
-              <div className="relative aspect-[4/3] bg-muted rounded-xl overflow-hidden mb-4">
+              <div className="relative h-[300px] bg-muted rounded-xl overflow-hidden mb-4">
                 <video
                   ref={videoRef}
                   autoPlay
                   playsInline
                   muted
+                  onLoadedMetadata={() => videoRef.current?.play()}
                   className="absolute top-0 left-0 w-full h-full object-cover"
                 />
                 <div className="absolute top-3 left-3 bg-destructive text-destructive-foreground px-2.5 py-1 rounded-full text-xs font-medium flex items-center gap-1.5 z-10">
@@ -180,7 +205,7 @@ export function FaceVerificationModal({
                 </div>
 
                 {/* Scan Frame */}
-                <div className="absolute inset-6 sm:inset-8 border-2 border-dashed border-primary/50 rounded-lg">
+                <div className="absolute inset-6 sm:inset-8 border-2 border-dashed border-primary/50 rounded-lg z-10">
                   {status === 'scanning' && (
                     <motion.div
                       className="absolute left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-primary to-transparent"
@@ -189,19 +214,6 @@ export function FaceVerificationModal({
                       animate={{ opacity: 1 }}
                     />
                   )}
-                </div>
-
-                {/* Face Icon Overlay */}
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="text-center text-muted-foreground">
-                    <ScanFace className={cn(
-                      "size-12 sm:size-16 mx-auto mb-2 transition-colors",
-                      status === 'scanning' ? "text-primary animate-pulse" : "opacity-50"
-                    )} />
-                    <p className="text-xs sm:text-sm">
-                      {status === 'scanning' ? 'স্ক্যান করা হচ্ছে...' : 'চেহারা এখানে রাখুন'}
-                    </p>
-                  </div>
                 </div>
               </div>
 

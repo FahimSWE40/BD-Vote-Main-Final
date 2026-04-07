@@ -202,7 +202,7 @@ export default function Index() {
           <StepCard 
             step="০১" 
             title="পরিচয় নিশ্চিত করুন" 
-            desc="আপনার এনআইডি কার্ড এবং ফেস ভেরিফিকেশনের মাধ্যমে লগইন করুন।"
+            desc="আপনার এনআইডি কার্ড এবং ফেস ভেরিফিকেশনের মাধ্যমে পরিচয় নিশ্চিত করুন।"
             icon="person_search"
             color="bg-primary"
           />

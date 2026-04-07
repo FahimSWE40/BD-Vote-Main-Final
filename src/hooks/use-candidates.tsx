@@ -8,7 +8,7 @@ export interface Candidate {
   position: string;
   party: string | null;
   photo_url: string | null;
-  manifesto: string | null;
+  bio: string | null;
   vote_count: number;
   is_active: boolean;
   constituency_id: string | null;
@@ -18,13 +18,13 @@ export interface Candidate {
 
 async function fetchCandidates(): Promise<Candidate[]> {
   const { data, error } = await supabase
-    .from('candidates')
+    .from('candidates' as any)
     .select('*')
     .order('position', { ascending: true })
     .order('full_name', { ascending: true });
 
   if (error) throw error;
-  return data || [];
+  return (data || []) as any as Candidate[];
 }
 
 export function useCandidates() {
@@ -82,13 +82,13 @@ export async function createCandidate(candidate: {
   bio?: string;
 }): Promise<Candidate> {
   const { data, error } = await supabase
-    .from('candidates')
+    .from('candidates' as any)
     .insert(candidate)
     .select()
     .single();
 
   if (error) throw error;
-  return data;
+  return data as any as Candidate;
 }
 
 // Update a candidate
@@ -97,20 +97,20 @@ export async function updateCandidate(
   updates: Partial<Omit<Candidate, 'id' | 'created_at' | 'updated_at' | 'created_by'>>
 ): Promise<Candidate> {
   const { data, error } = await supabase
-    .from('candidates')
+    .from('candidates' as any)
     .update(updates)
     .eq('id', id)
     .select()
     .single();
 
   if (error) throw error;
-  return data;
+  return data as any as Candidate;
 }
 
 // Delete a candidate
 export async function deleteCandidate(id: string): Promise<void> {
   const { error } = await supabase
-    .from('candidates')
+    .from('candidates' as any)
     .delete()
     .eq('id', id);
 

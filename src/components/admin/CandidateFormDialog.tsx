@@ -25,7 +25,7 @@ export function CandidateFormDialog({ open, onOpenChange, candidate, onSuccess }
     full_name: candidate?.full_name || '',
     position: candidate?.position || '',
     party: candidate?.party || '',
-    manifesto: candidate?.manifesto || '',
+    bio: candidate?.bio || '',
   });
 
   const isEditing = !!candidate;
@@ -68,7 +68,7 @@ export function CandidateFormDialog({ open, onOpenChange, candidate, onSuccess }
         full_name: formData.full_name.trim(),
         position: formData.position.trim(),
         party: formData.party.trim() || null,
-        manifesto: formData.manifesto.trim() || null,
+        bio: formData.bio.trim() || null,
         photo_url,
       };
 
@@ -167,11 +167,11 @@ export function CandidateFormDialog({ open, onOpenChange, candidate, onSuccess }
 
           {/* Bio */}
           <div className="space-y-2">
-            <Label htmlFor="manifesto">সংক্ষিপ্ত পরিচিতি</Label>
+            <Label htmlFor="bio">সংক্ষিপ্ত পরিচিতি</Label>
             <Textarea
-              id="manifesto"
-              value={formData.manifesto}
-              onChange={(e) => setFormData(prev => ({ ...prev, manifesto: e.target.value }))}
+              id="bio"
+              value={formData.bio}
+              onChange={(e) => setFormData(prev => ({ ...prev, bio: e.target.value }))}
               placeholder="প্রার্থী সম্পর্কে সংক্ষেপে..."
               rows={3}
             />

@@ -148,7 +148,7 @@ export default function AdminUpload() {
     // Batch insert
     if (votersToInsert.length > 0) {
       const { data, error } = await supabase
-        .from('voters')
+        .from('voters_master')
         .insert(votersToInsert)
         .select();
 

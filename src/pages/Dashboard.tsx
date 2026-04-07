@@ -124,16 +124,17 @@ function DashboardContent() {
   const { data: election } = useActiveElection();
 
   // Get verified voter info from session
-  const verifiedVoterId = sessionStorage.getItem('verified_voter_id');
-  const verifiedVoterName = sessionStorage.getItem('verified_voter_name');
+  const voterData = JSON.parse(sessionStorage.getItem('verified_voter') || 'null');
+  const verifiedVoterId = voterData?.id || sessionStorage.getItem('verified_voter_id');
+  const verifiedVoterName = voterData?.full_name || sessionStorage.getItem('verified_voter_name');
 
   // Fetch voter data from DB if verified
-  const { data: voterData, isLoading: voterLoading } = useQuery({
+  const { data: voterDbData, isLoading: voterLoading } = useQuery<any>({
     queryKey: ['dashboard-voter', verifiedVoterId],
     queryFn: async () => {
       if (!verifiedVoterId) return null;
       const { data, error } = await supabase
-        .from('voters')
+        .from('voters_master' as any)
         .select('*')
         .eq('id', verifiedVoterId)
         .single();
@@ -194,10 +195,10 @@ function DashboardContent() {
     : 'নির্ধারিত নয়';
   const isExpired = election?.end_time ? timeRemaining === 0 : false;
 
-  const voterName = voterData?.full_name || verifiedVoterName || 'ভোটার';
-  const voterId = voterData?.voter_id || '—';
-  const hasVoted = voterData?.has_voted || false;
-  const isVerified = voterData?.is_verified || false;
+  const voterName = voterDbData?.full_name || voterData?.full_name || verifiedVoterName || 'ভোটার';
+  const voterId = voterDbData?.voter_id || voterData?.voter_id || '—';
+  const hasVoted = voterDbData?.has_voted || voterData?.has_voted || false;
+  const isVerified = voterDbData?.is_verified || voterData?.is_verified || false;
 
   const getLogIcon = (action: string) => {
     if (action.includes('login') || action.includes('auth')) return { icon: LogIn, color: 'text-success' };

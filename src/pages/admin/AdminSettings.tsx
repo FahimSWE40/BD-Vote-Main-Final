@@ -11,6 +11,14 @@ import { AdminSettingsSkeleton } from '@/components/admin/AdminSkeletons';
 import { useElectionConfig, useSaveElectionConfig } from '@/hooks/use-election-config';
 import { toast } from 'sonner';
 
+const formatToLocalDatetime = (utcString: string | null | undefined) => {
+  if (!utcString) return '';
+  const date = new Date(utcString);
+  const offset = date.getTimezoneOffset() * 60000;
+  const localDate = new Date(date.getTime() - offset);
+  return localDate.toISOString().slice(0, 16);
+};
+
 export default function AdminSettings() {
   const { data: config, isLoading } = useElectionConfig();
   const saveMutation = useSaveElectionConfig();
@@ -23,8 +31,8 @@ export default function AdminSettings() {
   useEffect(() => {
     if (config) {
       setElectionName(config.election_name || '');
-      setStartTime(config.start_time ? new Date(config.start_time).toISOString().slice(0, 16) : '');
-      setEndTime(config.end_time ? new Date(config.end_time).toISOString().slice(0, 16) : '');
+      setStartTime(formatToLocalDatetime(config.start_time));
+      setEndTime(formatToLocalDatetime(config.end_time));
       setIsActive(config.is_active || false);
     }
   }, [config]);
@@ -55,20 +63,18 @@ export default function AdminSettings() {
   const handleToggleElection = async () => {
     const newActive = !isActive;
     setIsActive(newActive);
-    if (config?.id) {
-      try {
-        await saveMutation.mutateAsync({
-          id: config.id,
-          election_name: electionName || config.election_name,
-          start_time: startTime ? new Date(startTime).toISOString() : config.start_time,
-          end_time: endTime ? new Date(endTime).toISOString() : config.end_time,
-          is_active: newActive,
-        });
-        toast.success(newActive ? 'নির্বাচন শুরু হয়েছে!' : 'নির্বাচন বন্ধ করা হয়েছে');
-      } catch {
-        setIsActive(!newActive);
-        toast.error('পরিবর্তন করতে সমস্যা');
-      }
+    try {
+      await saveMutation.mutateAsync({
+        id: config?.id,
+        election_name: electionName || config?.election_name || 'নির্বাচন',
+        start_time: startTime ? new Date(startTime).toISOString() : (config?.start_time || new Date().toISOString()),
+        end_time: endTime ? new Date(endTime).toISOString() : (config?.end_time || new Date().toISOString()),
+        is_active: newActive,
+      });
+      toast.success(newActive ? 'নির্বাচন শুরু হয়েছে!' : 'নির্বাচন বন্ধ করা হয়েছে');
+    } catch {
+      setIsActive(!newActive);
+      toast.error('পরিবর্তন করতে সমস্যা');
     }
   };
 

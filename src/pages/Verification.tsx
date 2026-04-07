@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { CreditCard, ScanFace, CheckCircle, Camera, RotateCcw, HelpCircle, Info, Loader2, AlertCircle, XCircle, ShieldAlert } from "lucide-react";
+import { CreditCard, ScanFace, CheckCircle, Camera, RotateCcw, HelpCircle, Info, Loader2, AlertCircle, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -11,11 +11,10 @@ import { Footer } from "@/components/layout/Footer";
 import { cn } from "@/lib/utils";
 import { useCamera } from "@/hooks/use-camera";
 import { extractIdCardData, ExtractedData, terminateOCR } from "@/lib/ocr";
-import { loadFaceModels, detectFace, getFaceDescriptor, compareFaces, captureFrameFromVideo, getConfidenceTierLabel } from "@/lib/face-verification";
+import { loadFaceModels, detectFace, verifyFaceAgainstImage } from "@/lib/face-verification";
 import { LivenessDetector, getChallengeInstruction, getChallengeIcon } from "@/lib/liveness-detection";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { useActiveElection } from "@/hooks/use-election-config";
 
 type Step = 'id-scan' | 'face-scan' | 'complete';
 
@@ -38,27 +37,19 @@ export default function Verification() {
   const [livenessEmoji, setLivenessEmoji] = useState('');
   const [modelsReady, setModelsReady] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [verificationResult, setVerificationResult] = useState<{ success: boolean; similarity: number; confidenceTier?: string } | null>(null);
-  const [faceRetryCount, setFaceRetryCount] = useState(0);
-  const MAX_FACE_RETRIES = 3;
-
-  // FR-21: Election lifecycle check
-  const { data: activeElection, isLoading: electionLoading } = useActiveElection();
+  const [verificationResult, setVerificationResult] = useState<{ success: boolean; similarity: number } | null>(null);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const livenessRef = useRef<LivenessDetector>(new LivenessDetector());
   const animFrameRef = useRef<number>(0);
 
-  // Camera for ID scan (rear camera)
   const idCamera = useCamera({ facingMode: 'environment', width: 1280, height: 720 });
-  // Camera for face scan (front camera)
   const faceCamera = useCamera({ facingMode: 'user', width: 640, height: 480 });
 
   const currentStepIndex = steps.findIndex(s => s.id === currentStep);
   const progressPercent = ((currentStepIndex + 1) / steps.length) * 100;
 
-  // Preload face models when entering face-scan step
   useEffect(() => {
     if (currentStep === 'face-scan' || currentStep === 'id-scan') {
       loadFaceModels()
@@ -67,24 +58,22 @@ export default function Verification() {
     }
   }, [currentStep]);
 
-  // Start camera based on current step
   useEffect(() => {
     if (currentStep === 'id-scan') {
       idCamera.startCamera();
     } else if (currentStep === 'face-scan') {
       idCamera.stopCamera();
-      faceCamera.startCamera();
+      setTimeout(() => faceCamera.startCamera(), 400);
     } else {
       idCamera.stopCamera();
       faceCamera.stopCamera();
     }
-    
+
     return () => {
       cancelAnimationFrame(animFrameRef.current);
     };
   }, [currentStep]);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       idCamera.stopCamera();
@@ -94,14 +83,13 @@ export default function Verification() {
     };
   }, []);
 
-  // Capture photo from camera for ID scan
   const captureIdCard = useCallback(async () => {
     if (!idCamera.videoRef.current || !idCamera.isActive) return;
-    
+
     setIsProcessing(true);
     setErrorMessage(null);
     setOcrProgress(10);
-    
+
     try {
       const video = idCamera.videoRef.current;
       const canvas = document.createElement('canvas');
@@ -110,70 +98,62 @@ export default function Verification() {
       const ctx = canvas.getContext('2d');
       if (!ctx) throw new Error('Canvas context unavailable');
       ctx.drawImage(video, 0, 0);
-      
+
       setOcrProgress(30);
-      
-      // Convert to file for OCR
+
       const blob = await new Promise<Blob>((resolve, reject) => {
         canvas.toBlob(b => b ? resolve(b) : reject(new Error('Blob creation failed')), 'image/jpeg', 0.9);
       });
       const file = new File([blob], 'id-card.jpg', { type: 'image/jpeg' });
-      
+
       setOcrProgress(50);
-      
-      // Run OCR
+
       const data = await extractIdCardData(file);
       setOcrProgress(80);
-      
-      if (!data.voterId) {
-        setErrorMessage('আইডি কার্ড থেকে ভোটার আইডি খুঁজে পাওয়া যায়নি। পরিষ্কার ছবি তুলুন।');
+
+      const cleanNid = data.voterId.replace(/\D/g, '').slice(0, 16);
+      if (cleanNid.length !== 16) {
+        setErrorMessage("আইডি ভুল পড়া হয়েছে। পরিষ্কার ছবি তুলুন।");
         setOcrProgress(0);
         setIsProcessing(false);
         return;
       }
-      
-      setExtractedData(data);
-      
-      // Look up voter in database
+
+      setExtractedData({ ...data, voterId: cleanNid });
+
       const { data: voter, error } = await supabase
-        .from('voters')
+        .from('voters_master' as any)
         .select('*')
-        .eq('voter_id', data.voterId)
+        .eq('voter_id', cleanNid)
         .maybeSingle();
-      
+
       setOcrProgress(100);
-      
+
       if (error || !voter) {
-        setErrorMessage(`ভোটার আইডি "${data.voterId}" ডাটাবেসে পাওয়া যায়নি।`);
+        setErrorMessage(`ভোটার আইডি "${cleanNid}" ডাটাবেসে পাওয়া যায়নি।`);
         setIsProcessing(false);
         return;
       }
-      
-      if (voter.has_voted) {
+
+      if ((voter as any).has_voted) {
         setErrorMessage('আপনি ইতিমধ্যে ভোট দিয়েছেন। একাধিক ভোট অনুমোদিত নয়।');
         setIsProcessing(false);
         return;
       }
-      
+
       setVoterData(voter);
-      
-      // FR-5: Store constituency info in sessionStorage for Ballot page filtering
-      if (voter.constituency_id) {
-        sessionStorage.setItem('verified_voter_constituency_id', voter.constituency_id);
-      }
-      
+
       toast({
         title: 'আইডি কার্ড যাচাই সফল',
-        description: `${data.fullName || voter.full_name} - আইডি: ${data.voterId}`,
+        description: `${data.fullName || (voter as any).full_name} - আইডি: ${cleanNid}`,
       });
-      
-      // Move to face scan step
+
       setTimeout(() => {
         setCurrentStep('face-scan');
         setIsProcessing(false);
         setOcrProgress(0);
       }, 1000);
-      
+
     } catch (err) {
       console.error('ID scan error:', err);
       setErrorMessage('আইডি কার্ড স্ক্যান করতে সমস্যা হয়েছে। আবার চেষ্টা করুন।');
@@ -182,60 +162,55 @@ export default function Verification() {
     }
   }, [idCamera.videoRef, idCamera.isActive, toast]);
 
-  // Upload ID card image from file
   const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-    
+
     setIsProcessing(true);
     setErrorMessage(null);
     setOcrProgress(20);
-    
+
     try {
       const data = await extractIdCardData(file);
       setOcrProgress(70);
-      
-      if (!data.voterId) {
-        setErrorMessage('আইডি কার্ড থেকে ভোটার আইডি খুঁজে পাওয়া যায়নি।');
+
+      const cleanNid = data.voterId.replace(/\D/g, '').slice(0, 16);
+      if (cleanNid.length !== 16) {
+        setErrorMessage("আইডি ভুল পড়া হয়েছে।");
         setOcrProgress(0);
         setIsProcessing(false);
         return;
       }
-      
-      setExtractedData(data);
-      
+
+      setExtractedData({ ...data, voterId: cleanNid });
+
       const { data: voter, error } = await supabase
-        .from('voters')
+        .from('voters_master' as any)
         .select('*')
-        .eq('voter_id', data.voterId)
+        .eq('voter_id', cleanNid)
         .maybeSingle();
-      
+
       setOcrProgress(100);
-      
+
       if (error || !voter) {
-        setErrorMessage(`ভোটার আইডি "${data.voterId}" ডাটাবেসে পাওয়া যায়নি।`);
+        setErrorMessage(`ভোটার আইডি "${cleanNid}" ডাটাবেসে পাওয়া যায়নি।`);
         setIsProcessing(false);
         return;
       }
-      
-      if (voter.has_voted) {
+
+      if ((voter as any).has_voted) {
         setErrorMessage('আপনি ইতিমধ্যে ভোট দিয়েছেন।');
         setIsProcessing(false);
         return;
       }
-      
-      setVoterData(voter);
 
-      // FR-5: Store constituency info in sessionStorage for Ballot page filtering
-      if (voter.constituency_id) {
-        sessionStorage.setItem('verified_voter_constituency_id', voter.constituency_id);
-      }
+      setVoterData(voter);
 
       toast({
         title: 'আইডি কার্ড যাচাই সফল',
-        description: `${data.fullName || voter.full_name} - আইডি: ${data.voterId}`,
+        description: `${data.fullName || (voter as any).full_name} - আইডি: ${cleanNid}`,
       });
-      
+
       setTimeout(() => {
         setCurrentStep('face-scan');
         setIsProcessing(false);
@@ -246,150 +221,104 @@ export default function Verification() {
       setIsProcessing(false);
       setOcrProgress(0);
     }
-    
-    // Reset file input
+
     if (fileInputRef.current) fileInputRef.current.value = '';
   }, [toast]);
 
-  // Start face verification with liveness detection
+  const completeVerification = useCallback(() => {
+    idCamera.stopCamera();
+    faceCamera.stopCamera();
+    cancelAnimationFrame(animFrameRef.current);
+    setIsProcessing(false);
+    setCurrentStep('complete');
+
+    if (voterData) {
+      sessionStorage.setItem('verified_voter', JSON.stringify(voterData));
+      sessionStorage.setItem('verified_voter_id', voterData.id);
+      sessionStorage.setItem('verified_voter_name', voterData.full_name);
+    }
+
+    toast({
+      title: 'যাচাইকরণ সফল! ✅',
+      description: 'আপনি এখন ভোট দিতে পারবেন।',
+    });
+
+    setTimeout(() => navigate('/dashboard'), 2500);
+  }, [voterData, navigate, toast, idCamera, faceCamera]);
+
   const startFaceVerification = useCallback(async () => {
     if (!faceCamera.videoRef.current || !faceCamera.isActive || !modelsReady) return;
-    
+
     setIsProcessing(true);
     setErrorMessage(null);
     setFaceMatchProgress(0);
     setVerificationResult(null);
-    
+
     const detector = livenessRef.current;
     detector.reset();
-    
+
     const video = faceCamera.videoRef.current;
-    
+
     const processFrame = async () => {
       if (!faceCamera.isActive) return;
-      
+
       try {
         const detection = await detectFace(video);
-        
+
         if (!detection) {
           setLivenessMessage('চেহারা খুঁজে পাওয়া যাচ্ছে না। ক্যামেরার দিকে তাকান।');
           setLivenessEmoji('👤');
           animFrameRef.current = requestAnimationFrame(processFrame);
           return;
         }
-        
+
         const state = await detector.processFrame(detection);
-        
+
         setLivenessMessage(state.message);
         setFaceMatchProgress(state.progress);
-        
+
         const challenge = detector.getCurrentChallenge();
         if (challenge) {
           setLivenessEmoji(getChallengeIcon(challenge));
         }
-        
+
         if (state.isLive) {
-          // Liveness passed! Now do face matching
           setLivenessMessage('লাইভনেস যাচাই সম্পন্ন! চেহারা ম্যাচ করা হচ্ছে...');
           setFaceMatchProgress(80);
-          
-          // Get face descriptor from live video
-          const canvas = await captureFrameFromVideo(video);
-          const liveDescriptor = await getFaceDescriptor(canvas);
-          
-          if (!liveDescriptor) {
-            setErrorMessage('চেহারার বৈশিষ্ট্য বের করা যায়নি। আবার চেষ্টা করুন।');
-            setIsProcessing(false);
-            return;
-          }
-          
-          // If voter has a face template stored, compare
-          if (voterData?.face_template) {
-            try {
-              const storedDescriptor = new Float32Array(JSON.parse(voterData.face_template));
-              const similarity = compareFaces(liveDescriptor, storedDescriptor);
-              
-              setFaceMatchProgress(100);
-              setVerificationResult({ success: similarity >= 55, similarity: Math.round(similarity) });
-              
-              if (similarity >= 55) {
-                await markVoterVerified();
-              } else {
-                setErrorMessage(`চেহারা মেলেনি (${Math.round(similarity)}% সাদৃশ্য)। আবার চেষ্টা করুন।`);
-                setIsProcessing(false);
-              }
-            } catch {
-              // If face template parsing fails, skip matching and verify
-              await markVoterVerified();
-            }
-          } else {
-            // No stored face template - store this one and verify
-            const descriptorJson = JSON.stringify(Array.from(liveDescriptor));
+
+          const result = await verifyFaceAgainstImage(video, voterData?.photo_url, 55);
+
+          setFaceMatchProgress(100);
+          setVerificationResult({ success: result.success, similarity: result.similarity });
+
+          if (result.success) {
             await supabase
-              .from('voters')
-              .update({ face_template: descriptorJson, is_verified: true })
+              .from('voters_master' as any)
+              .update({ is_verified: true })
               .eq('id', voterData.id);
-            
-            setFaceMatchProgress(100);
-            setVerificationResult({ success: true, similarity: 100 });
-            
-            toast({
-              title: 'ফেস টেমপ্লেট সংরক্ষণ করা হয়েছে',
-              description: 'প্রথমবার যাচাই — আপনার চেহারা সংরক্ষিত হয়েছে।',
-            });
-            
             completeVerification();
+          } else {
+            setErrorMessage(`${result.message} আবার চেষ্টা করুন।`);
+            setIsProcessing(false);
           }
-          
-          return; // Stop the animation frame loop
+          return;
         }
-        
-        // Check timeout
+
         if (detector.isChallengeTimedOut()) {
           setErrorMessage('সময় শেষ! আবার চেষ্টা করুন।');
           setIsProcessing(false);
           return;
         }
-        
+
         animFrameRef.current = requestAnimationFrame(processFrame);
       } catch (err) {
         console.error('Frame processing error:', err);
         animFrameRef.current = requestAnimationFrame(processFrame);
       }
     };
-    
+
     animFrameRef.current = requestAnimationFrame(processFrame);
-  }, [faceCamera.videoRef, faceCamera.isActive, modelsReady, voterData, toast]);
-
-  const markVoterVerified = async () => {
-    if (!voterData) return;
-    await supabase
-      .from('voters')
-      .update({ is_verified: true })
-      .eq('id', voterData.id);
-    completeVerification();
-  };
-
-  const completeVerification = () => {
-    setIsProcessing(false);
-    setCurrentStep('complete');
-    
-    // Store verified voter info for Ballot and Dashboard pages
-    if (voterData) {
-      sessionStorage.setItem('verified_voter_id', voterData.id);
-      sessionStorage.setItem('verified_voter_name', voterData.full_name);
-      if (voterData.constituency_id) {
-        sessionStorage.setItem('verified_voter_constituency_id', voterData.constituency_id);
-      }
-    }
-    
-    toast({
-      title: 'যাচাইকরণ সফল! ✅',
-      description: 'আপনি এখন ভোট দিতে পারবেন।',
-    });
-    
-    setTimeout(() => navigate('/ballot'), 2500);
-  };
+  }, [faceCamera.videoRef, faceCamera.isActive, modelsReady, voterData, completeVerification]);
 
   const handleRetry = () => {
     setIsProcessing(false);
@@ -397,7 +326,6 @@ export default function Verification() {
     setOcrProgress(0);
     setFaceMatchProgress(0);
     setVerificationResult(null);
-    setFaceRetryCount(prev => prev + 1);
     livenessRef.current.reset();
     cancelAnimationFrame(animFrameRef.current);
   };
@@ -410,32 +338,6 @@ export default function Verification() {
 
       <main className="flex-1 py-6 sm:py-8 lg:py-12">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-10">
-
-          {/* FR-21: Election Lifecycle Check */}
-          {!electionLoading && (!activeElection || !activeElection.is_active) && (
-            <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="mb-6">
-              <Card className="border-destructive/30 bg-destructive/5">
-                <CardContent className="p-4 sm:p-6 flex items-center gap-4">
-                  <ShieldAlert className="size-8 text-destructive shrink-0" />
-                  <div>
-                    <h3 className="font-bold text-destructive text-base sm:text-lg">
-                      {!activeElection ? 'কোনো নির্বাচন কনফিগার করা হয়নি' : 'নির্বাচন বর্তমানে নিষ্ক্রিয়'}
-                    </h3>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      {!activeElection 
-                        ? 'অ্যাডমিন প্যানেল থেকে নির্বাচন তৈরি ও সক্রিয় করুন।'
-                        : activeElection.end_time && new Date(activeElection.end_time) < new Date()
-                          ? 'নির্বাচনের নির্ধারিত সময় শেষ হয়ে গেছে।'
-                          : activeElection.start_time && new Date(activeElection.start_time) > new Date()
-                            ? `নির্বাচন শুরু হবে: ${new Date(activeElection.start_time).toLocaleString('bn-BD')}`
-                            : 'নির্বাচন এখনো শুরু হয়নি বা বন্ধ করা হয়েছে।'
-                      }
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
-          )}
 
           {/* Breadcrumb */}
           <div className="text-xs sm:text-sm text-muted-foreground mb-4 sm:mb-6">
@@ -591,7 +493,7 @@ export default function Verification() {
                           </Badge>
                         )}
                         <p className="text-sm text-muted-foreground mb-4 sm:mb-6">
-                          আপনাকে ব্যালট পেজে নিয়ে যাওয়া হচ্ছে...
+                          আপনাকে ড্যাশবোর্ডে নিয়ে যাওয়া হচ্ছে...
                         </p>
                         <div className="flex justify-center">
                           <div className="animate-spin size-6 sm:size-8 border-4 border-primary border-t-transparent rounded-full" />
@@ -601,14 +503,13 @@ export default function Verification() {
                       <motion.div key={currentStep} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                         <h2 className="text-base sm:text-lg lg:text-xl font-semibold text-center mb-4 sm:mb-6 px-2">
                           {currentStep === 'id-scan'
-                            ? 'আপনার ইউনিভার্সিটি আইডি কার্ডটি ক্যামেরার সামনে ধরুন'
+                            ? 'আপনার জাতীয় পরিচয়পত্র (NID) ক্যামেরার সামনে ধরুন'
                             : 'চেহারা যাচাই — নির্দেশনা অনুসরণ করুন'
                           }
                         </h2>
 
                         {/* Camera Preview */}
                         <div className="relative aspect-[4/3] sm:aspect-video bg-muted rounded-lg sm:rounded-xl overflow-hidden mb-4 sm:mb-6">
-                          {/* Video element */}
                           <video
                             ref={activeCamera.videoRef}
                             autoPlay
@@ -616,11 +517,10 @@ export default function Verification() {
                             muted
                             className={cn(
                               "absolute inset-0 w-full h-full object-cover",
-                              currentStep === 'face-scan' && "scale-x-[-1]" // Mirror for selfie
+                              currentStep === 'face-scan' && "scale-x-[-1]"
                             )}
                           />
-                          
-                          {/* LIVE badge */}
+
                           {activeCamera.isActive && (
                             <div className="absolute top-2 sm:top-4 left-2 sm:left-4 bg-destructive text-destructive-foreground px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-xs sm:text-sm font-medium flex items-center gap-1.5 sm:gap-2 z-10">
                               <span className="size-1.5 sm:size-2 bg-destructive-foreground rounded-full animate-pulse" />
@@ -628,10 +528,8 @@ export default function Verification() {
                             </div>
                           )}
 
-                          {/* Scan Frame */}
                           <div className="absolute inset-4 sm:inset-8 border-2 border-dashed border-primary/50 rounded-lg pointer-events-none" />
 
-                          {/* Liveness instruction overlay */}
                           {currentStep === 'face-scan' && isProcessing && livenessMessage && (
                             <div className="absolute bottom-3 left-3 right-3 bg-background/80 backdrop-blur-sm rounded-lg p-3 z-10 text-center">
                               <span className="text-2xl mr-2">{livenessEmoji}</span>
@@ -639,7 +537,6 @@ export default function Verification() {
                             </div>
                           )}
 
-                          {/* Camera not available overlay */}
                           {!activeCamera.isActive && !activeCamera.error && (
                             <div className="absolute inset-0 flex items-center justify-center z-10">
                               <div className="text-center text-muted-foreground">
@@ -649,7 +546,6 @@ export default function Verification() {
                             </div>
                           )}
 
-                          {/* Camera error */}
                           {activeCamera.error && (
                             <div className="absolute inset-0 flex items-center justify-center z-10">
                               <div className="text-center text-destructive px-4">
@@ -687,9 +583,9 @@ export default function Verification() {
                               {currentStep === 'id-scan' ? ocrProgress : faceMatchProgress}% সম্পন্ন
                             </span>
                           </div>
-                          <Progress 
-                            value={currentStep === 'id-scan' ? ocrProgress : faceMatchProgress} 
-                            className="h-1.5 sm:h-2" 
+                          <Progress
+                            value={currentStep === 'id-scan' ? ocrProgress : faceMatchProgress}
+                            className="h-1.5 sm:h-2"
                           />
                         </div>
 

@@ -54,7 +54,7 @@ export type Database = {
           full_name: string
           id: string
           is_active: boolean
-          manifesto: string | null
+          bio: string | null
           party: string | null
           photo_url: string | null
           position: string
@@ -67,7 +67,7 @@ export type Database = {
           full_name: string
           id?: string
           is_active?: boolean
-          manifesto?: string | null
+          bio?: string | null
           party?: string | null
           photo_url?: string | null
           position?: string
@@ -80,7 +80,7 @@ export type Database = {
           full_name?: string
           id?: string
           is_active?: boolean
-          manifesto?: string | null
+          bio?: string | null
           party?: string | null
           photo_url?: string | null
           position?: string
@@ -99,24 +99,24 @@ export type Database = {
       }
       constituencies: {
         Row: {
-          constituency_code: string
-          constituency_name: string
+          code: string
+          name: string
           created_at: string
           district: string
           division: string
           id: string
         }
         Insert: {
-          constituency_code: string
-          constituency_name: string
+          code: string
+          name: string
           created_at?: string
           district: string
           division: string
           id?: string
         }
         Update: {
-          constituency_code?: string
-          constituency_name?: string
+          code?: string
+          name?: string
           created_at?: string
           district?: string
           division?: string
@@ -216,6 +216,39 @@ export type Database = {
           id?: string
           role?: Database["public"]["Enums"]["app_role"]
           user_id?: string
+        }
+        Relationships: []
+      }
+      voters_master: {
+        Row: {
+          created_at: string
+          full_name: string
+          has_voted: boolean | null
+          id: string
+          is_verified: boolean | null
+          photo_url: string | null
+          updated_at: string | null
+          voter_id: string
+        }
+        Insert: {
+          created_at?: string
+          full_name: string
+          has_voted?: boolean | null
+          id?: string
+          is_verified?: boolean | null
+          photo_url?: string | null
+          updated_at?: string | null
+          voter_id: string
+        }
+        Update: {
+          created_at?: string
+          full_name?: string
+          has_voted?: boolean | null
+          id?: string
+          is_verified?: boolean | null
+          photo_url?: string | null
+          updated_at?: string | null
+          voter_id?: string
         }
         Relationships: []
       }

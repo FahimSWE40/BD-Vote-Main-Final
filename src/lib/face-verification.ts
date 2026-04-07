@@ -16,14 +16,13 @@ export async function loadFaceModels(
   onProgress?: (progress: ModelLoadProgress) => void
 ): Promise<void> {
   if (modelsLoaded) return;
-  
-  // If already loading, wait for that promise
+
   if (modelsLoading && loadingPromise) {
     return loadingPromise;
   }
-  
+
   modelsLoading = true;
-  
+
   loadingPromise = (async () => {
     try {
       const models = [
@@ -36,7 +35,7 @@ export async function loadFaceModels(
         onProgress?.({ current: i, total: models.length, modelName: models[i].name });
         await models[i].loader();
       }
-      
+
       onProgress?.({ current: models.length, total: models.length, modelName: 'complete' });
       modelsLoaded = true;
       console.log('Face-api models loaded successfully');
@@ -47,11 +46,10 @@ export async function loadFaceModels(
       throw new Error('ফেস মডেল লোড করতে ব্যর্থ হয়েছে');
     }
   })();
-  
+
   return loadingPromise;
 }
 
-// Preload models in the background (call this early in app lifecycle)
 export function preloadFaceModels(): void {
   if (!modelsLoaded && !modelsLoading) {
     loadFaceModels().catch(err => {
@@ -73,9 +71,9 @@ export async function detectFace(
 ): Promise<faceapi.WithFaceDescriptor<faceapi.WithFaceLandmarks<{ detection: faceapi.FaceDetection }, faceapi.FaceLandmarks68>> | null> {
   const detection = await faceapi
     .detectSingleFace(input, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 }))
-    .withFaceLandmarks(true) // Use tiny landmarks for speed
+    .withFaceLandmarks(true)
     .withFaceDescriptor();
-  
+
   return detection || null;
 }
 
@@ -88,9 +86,6 @@ export async function getFaceDescriptor(
 
 export function compareFaces(descriptor1: Float32Array, descriptor2: Float32Array): number {
   const distance = faceapi.euclideanDistance(descriptor1, descriptor2);
-  // Convert distance to similarity score (0-100)
-  // Typical threshold for same person is distance < 0.6
-  // Distance of 0 = 100% match, distance of 1 = 0% match
   const similarity = Math.max(0, Math.min(100, (1 - distance) * 100));
   return similarity;
 }
@@ -104,7 +99,7 @@ export async function extractFaceFromImage(imageUrl: string): Promise<Float32Arr
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
-    
+
     img.onload = async () => {
       try {
         const descriptor = await getFaceDescriptor(img);
@@ -113,11 +108,11 @@ export async function extractFaceFromImage(imageUrl: string): Promise<Float32Arr
         reject(error);
       }
     };
-    
+
     img.onerror = () => {
       reject(new Error('Failed to load image'));
     };
-    
+
     img.src = imageUrl;
   });
 }
@@ -127,38 +122,19 @@ export async function captureFrameFromVideo(video: HTMLVideoElement): Promise<HT
   canvas.width = video.videoWidth;
   canvas.height = video.videoHeight;
   const ctx = canvas.getContext('2d');
-  
+
   if (!ctx) {
     throw new Error('Failed to get canvas context');
   }
-  
+
   ctx.drawImage(video, 0, 0);
   return canvas;
 }
-
-export type FaceConfidenceTier = 'high' | 'moderate' | 'low' | 'none';
 
 export interface FaceVerificationResult {
   success: boolean;
   similarity: number;
   message: string;
-  confidenceTier: FaceConfidenceTier;
-}
-
-export function getConfidenceTier(similarity: number): FaceConfidenceTier {
-  if (similarity >= 70) return 'high';
-  if (similarity >= 55) return 'moderate';
-  if (similarity > 0) return 'low';
-  return 'none';
-}
-
-export function getConfidenceTierLabel(tier: FaceConfidenceTier): string {
-  switch (tier) {
-    case 'high': return 'উচ্চ আত্মবিশ্বাস';
-    case 'moderate': return 'মাঝারি আত্মবিশ্বাস';
-    case 'low': return 'নিম্ন আত্মবিশ্বাস';
-    case 'none': return 'চেহারা পাওয়া যায়নি';
-  }
 }
 
 export async function verifyFaceAgainstImage(
@@ -167,57 +143,41 @@ export async function verifyFaceAgainstImage(
   threshold: number = 55
 ): Promise<FaceVerificationResult> {
   try {
-    // Ensure models are loaded
     if (!modelsLoaded) {
       await loadFaceModels();
     }
-    
-    // Get face descriptor from reference image (ID card photo)
+
     const referenceDescriptor = await extractFaceFromImage(referenceImageUrl);
     if (!referenceDescriptor) {
       return {
         success: false,
         similarity: 0,
         message: 'আইডি কার্ডে চেহারা খুঁজে পাওয়া যায়নি',
-        confidenceTier: 'none',
       };
     }
-    
-    // Capture frame from live video
+
     const canvas = await captureFrameFromVideo(liveVideoElement);
-    
-    // Get face descriptor from live video
+
     const liveDescriptor = await getFaceDescriptor(canvas);
     if (!liveDescriptor) {
       return {
         success: false,
         similarity: 0,
         message: 'লাইভ ভিডিওতে চেহারা খুঁজে পাওয়া যায়নি',
-        confidenceTier: 'none',
       };
     }
-    
-    // Compare faces
+
     const similarity = compareFaces(referenceDescriptor, liveDescriptor);
     const isMatch = similarity >= threshold;
-    const confidenceTier = getConfidenceTier(similarity);
-    
-    let message: string;
-    if (isMatch && confidenceTier === 'high') {
-      message = `চেহারা মিলেছে — উচ্চ আত্মবিশ্বাস (${Math.round(similarity)}%)`;
-    } else if (isMatch && confidenceTier === 'moderate') {
-      message = `চেহারা মিলেছে — মাঝারি আত্মবিশ্বাস (${Math.round(similarity)}%)`;
-    } else if (similarity >= 30) {
-      message = `চেহারা মেলেনি (${Math.round(similarity)}% সাদৃশ্য)। ভালো আলোতে আবার চেষ্টা করুন।`;
-    } else {
-      message = `চেহারা মেলেনি (${Math.round(similarity)}%)। আইডি কার্ড পুনরায় স্ক্যান করুন।`;
-    }
-    
+
+    const message = isMatch
+      ? `চেহারা মিলেছে (${Math.round(similarity)}% সাদৃশ্য)`
+      : `চেহারা মেলেনি (${Math.round(similarity)}% সাদৃশ্য)`;
+
     return {
       success: isMatch,
       similarity: Math.round(similarity),
       message,
-      confidenceTier,
     };
   } catch (error) {
     console.error('Face verification error:', error);
@@ -225,7 +185,6 @@ export async function verifyFaceAgainstImage(
       success: false,
       similarity: 0,
       message: error instanceof Error ? error.message : 'যাচাই করতে সমস্যা হয়েছে',
-      confidenceTier: 'none',
     };
   }
 }

@@ -62,8 +62,8 @@ function CandidateCard({
               </div>
             </div>
             
-            {candidate.manifesto && (
-              <p className="text-xs sm:text-sm text-muted-foreground mt-1 line-clamp-1 sm:line-clamp-2">{candidate.manifesto}</p>
+            {candidate.bio && (
+              <p className="text-xs sm:text-sm text-muted-foreground mt-1 line-clamp-1 sm:line-clamp-2">{candidate.bio}</p>
             )}
             
             <div className="flex items-center gap-1.5 sm:gap-2 mt-2 sm:mt-3 flex-wrap">

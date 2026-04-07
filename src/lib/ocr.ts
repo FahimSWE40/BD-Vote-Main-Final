@@ -56,18 +56,13 @@ export async function extractIdCardData(imageFile: File): Promise<ExtractedData>
     console.log('OCR Raw Text:', text);
     console.log('OCR Confidence:', confidence);
 
-    // Extract voter ID - more flexible patterns
+    // Extract voter ID - NID-focused patterns
     const voterIdPatterns = [
-      /(?:ID|আইডি|Roll|রোল|Voter ID|ভোটার আইডি|Student ID|শিক্ষার্থী আইডি|Reg|Registration)[:\s#.-]*(\d{4,12})/i,
-      /\b(\d{8,10})\b/,                   // 8-10 digit numbers
-      /\b(20\d{5,8})\b/,                  // Year-based IDs starting with 20
-      /\b(21\d{5,8})\b/,                  // Year-based IDs starting with 21
-      /\b(22\d{5,8})\b/,                  // Year-based IDs starting with 22
-      /\b(23\d{5,8})\b/,                  // Year-based IDs starting with 23
-      /\b(24\d{5,8})\b/,                  // Year-based IDs starting with 24
-      /\b(\d{2}[-/]\d{3,6})\b/,           // Format like 22-12345
-      /\b(\d{6,7})\b/,                    // 6-7 digit numbers
-      /[:\s](\d{4,})/,                    // Any number after colon/space
+      /\b(\d{16})\b/,
+      /(?:ID|আইডি|Student ID|Reg)[:\s#.-]*(\d{12,20})/i,
+      /\b(\d{12,20})\b/,
+      /\b(24\d{10,14})\b/,
+      /\b(\d{8,10})\b/,
     ];
     
     let voterId = '';

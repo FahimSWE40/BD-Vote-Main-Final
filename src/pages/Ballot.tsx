@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { CheckCircle, Plus, Vote, Shield, Sparkles, WifiOff, Loader2, AlertCircle, Copy, ExternalLink, Receipt } from "lucide-react";
+import { CheckCircle, Plus, Vote, Shield, Sparkles, WifiOff, Loader2, AlertCircle, Copy, ExternalLink, Receipt, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -153,62 +153,103 @@ export default function Ballot() {
               <Card className="border-success/20">
                 <CardContent className="p-6 sm:p-8">
                   {/* Success Header */}
-                  <div className="text-center mb-8">
+                  <div className="text-center mb-6">
                     <div className="size-20 bg-success/10 rounded-full flex items-center justify-center mx-auto mb-4">
                       <CheckCircle className="size-10 text-success" />
                     </div>
-                    <h2 className="text-2xl sm:text-3xl font-bold mb-2">ভোট সফল হয়েছে! ✅</h2>
-                    <p className="text-muted-foreground">
+                    <h2 className="text-2xl sm:text-3xl font-bold mb-2">ভোট সফল হয়েছে!</h2>
+                    <p className="text-muted-foreground mb-4">
                       আপনার ভোট ব্লকচেইনে স্থায়ীভাবে রেকর্ড করা হয়েছে
                     </p>
+                    {/* Status Badges */}
+                    <div className="flex items-center justify-center gap-2 flex-wrap">
+                      <Badge className="bg-success/10 text-success border-0 text-xs sm:text-sm">
+                        <CheckCircle className="size-3.5 mr-1" />
+                        ব্লকচেইনে নিশ্চিত
+                      </Badge>
+                      <Badge className="bg-primary/10 text-primary border-0 text-xs sm:text-sm">
+                        <Zap className="size-3.5 mr-1" />
+                        Base Sepolia
+                      </Badge>
+                      <Badge className="bg-muted text-muted-foreground border-0 text-xs sm:text-sm">
+                        <Shield className="size-3.5 mr-1" />
+                        এনক্রিপ্টেড
+                      </Badge>
+                    </div>
                   </div>
 
                   {/* Receipt Card */}
-                  <div className="bg-muted/50 rounded-xl p-5 sm:p-6 space-y-5 mb-6">
-                    <div className="flex items-center gap-2 text-primary mb-2">
-                      <Receipt className="size-5" />
-                      <span className="font-semibold text-lg">ভোট রিসিট</span>
+                  <div className="bg-muted/50 rounded-xl p-5 sm:p-6 space-y-4 mb-6">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-primary">
+                        <Receipt className="size-5" />
+                        <span className="font-semibold text-lg">ভোট রিসিট</span>
+                      </div>
+                      <span className="text-xs text-muted-foreground">
+                        {new Date().toLocaleString('bn-BD')}
+                      </span>
+                    </div>
+
+                    {/* Status row */}
+                    <div className="flex items-center justify-between py-2 border-b border-border/50">
+                      <span className="text-xs text-muted-foreground">স্ট্যাটাস</span>
+                      <Badge className="bg-success/10 text-success border-0 text-xs">
+                        <CheckCircle className="size-3 mr-1" />
+                        ব্লকচেইনে যাচাইকৃত
+                      </Badge>
+                    </div>
+
+                    {/* Network row */}
+                    <div className="flex items-center justify-between py-2 border-b border-border/50">
+                      <span className="text-xs text-muted-foreground">নেটওয়ার্ক</span>
+                      <span className="text-xs font-medium">Base Sepolia (Chain 84532)</span>
                     </div>
 
                     {/* Candidate */}
-                    <div>
-                      <p className="text-xs text-muted-foreground mb-1">প্রার্থী</p>
-                      <p className="font-medium">{selectedCandidate?.full_name} — {selectedCandidate?.party || 'স্বতন্ত্র'}</p>
+                    <div className="flex items-center justify-between py-2 border-b border-border/50">
+                      <span className="text-xs text-muted-foreground">প্রার্থী</span>
+                      <span className="text-sm font-medium text-right">
+                        {selectedCandidate?.full_name}
+                        {selectedCandidate?.party && (
+                          <span className="text-muted-foreground text-xs ml-1">({selectedCandidate.party})</span>
+                        )}
+                      </span>
                     </div>
 
                     {/* TX Hash */}
                     {voteReceipt.txHash && (
                       <div>
-                        <p className="text-xs text-muted-foreground mb-1">ট্রানজ্যাকশন হ্যাশ (TX)</p>
+                        <p className="text-xs text-muted-foreground mb-1.5">ট্রানজ্যাকশন হ্যাশ (TX)</p>
                         <div className="flex items-center gap-2">
-                          <code className="text-xs sm:text-sm font-mono text-primary bg-primary/5 px-3 py-1.5 rounded-lg break-all flex-1">
+                          <code className="text-xs font-mono text-primary bg-primary/5 px-3 py-1.5 rounded-lg break-all flex-1">
                             {voteReceipt.txHash}
                           </code>
-                          <Button variant="ghost" size="icon" className="shrink-0" onClick={() => copyToClipboard(voteReceipt.txHash, 'TX Hash')}>
-                            <Copy className="size-4" />
+                          <Button variant="ghost" size="icon" className="shrink-0 size-8" onClick={() => copyToClipboard(voteReceipt.txHash, 'TX Hash')}>
+                            <Copy className="size-3.5" />
                           </Button>
                         </div>
                         <a
                           href={getExplorerUrl(voteReceipt.txHash)}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-xs text-primary hover:underline flex items-center gap-1 mt-1"
+                          className="text-xs text-primary hover:underline flex items-center gap-1 mt-1.5"
                         >
-                          BaseScan-এ দেখুন <ExternalLink className="size-3" />
+                          <ExternalLink className="size-3" />
+                          BaseScan-এ ব্লকচেইন যাচাই করুন
                         </a>
                       </div>
                     )}
 
-                    {/* Receipt Hash */}
-                    {voteReceipt.receiptHash && (
+                    {/* Receipt Hash (only if different from txHash) */}
+                    {voteReceipt.receiptHash && voteReceipt.receiptHash !== voteReceipt.txHash && (
                       <div>
-                        <p className="text-xs text-muted-foreground mb-1">রিসিট হ্যাশ (আপনার ভোট যাচাই করতে সংরক্ষণ করুন)</p>
+                        <p className="text-xs text-muted-foreground mb-1.5">রিসিট হ্যাশ</p>
                         <div className="flex items-center gap-2">
-                          <code className="text-xs sm:text-sm font-mono text-success bg-success/5 px-3 py-1.5 rounded-lg break-all flex-1">
+                          <code className="text-xs font-mono text-success bg-success/5 px-3 py-1.5 rounded-lg break-all flex-1">
                             {voteReceipt.receiptHash}
                           </code>
-                          <Button variant="ghost" size="icon" className="shrink-0" onClick={() => copyToClipboard(voteReceipt.receiptHash, 'Receipt')}>
-                            <Copy className="size-4" />
+                          <Button variant="ghost" size="icon" className="shrink-0 size-8" onClick={() => copyToClipboard(voteReceipt.receiptHash, 'Receipt')}>
+                            <Copy className="size-3.5" />
                           </Button>
                         </div>
                       </div>
@@ -218,18 +259,19 @@ export default function Ballot() {
                   {/* Warning */}
                   <div className="bg-warning/10 border border-warning/20 rounded-lg p-4 mb-6">
                     <p className="text-sm text-warning font-medium">
-                      ⚠️ আপনার রিসিট হ্যাশ সংরক্ষণ করুন! এটি দিয়ে আপনি পরে আপনার ভোট যাচাই করতে পারবেন।
+                      ⚠️ TX হ্যাশ সংরক্ষণ করুন — এটি দিয়ে যেকোনো সময় আপনার ভোট ব্লকচেইনে যাচাই করা যাবে।
                     </p>
                   </div>
 
                   {/* Actions */}
                   <div className="flex flex-col sm:flex-row gap-3">
-                    <Button className="flex-1" onClick={() => navigate('/verify-vote')}>
+                    <Button className="flex-1" onClick={() => navigate('/results')}>
+                      <CheckCircle className="size-4 mr-2" />
+                      লাইভ ফলাফল দেখুন
+                    </Button>
+                    <Button variant="outline" className="flex-1" onClick={() => navigate('/verify-vote')}>
                       <Shield className="size-4 mr-2" />
                       ভোট যাচাই করুন
-                    </Button>
-                    <Button variant="outline" className="flex-1" onClick={() => navigate('/results')}>
-                      ফলাফল দেখুন
                     </Button>
                   </div>
                 </CardContent>

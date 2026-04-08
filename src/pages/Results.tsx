@@ -398,7 +398,7 @@ export default function Results() {
                             </div>
                             <div className="flex items-center justify-between text-xs text-muted-foreground">
                               <span>{timeStr}</span>
-                              <span>{candidateName || '—'} · Base Sepolia</span>
+                              <span>{candidateName || '—'} · {tx.network === 'base-sepolia' || tx.network === 'Base Sepolia' ? 'Base Sepolia' : (tx.network || 'Base Sepolia')}</span>
                             </div>
                           </div>
                         );
@@ -467,7 +467,7 @@ export default function Results() {
                                   </Badge>
                                 </td>
                                 <td className="px-4 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm text-muted-foreground">
-                                  Base Sepolia
+                                  {tx.network === 'base-sepolia' || tx.network === 'Base Sepolia' ? 'Base Sepolia' : (tx.network || 'Base Sepolia')}
                                 </td>
                               </tr>
                             );

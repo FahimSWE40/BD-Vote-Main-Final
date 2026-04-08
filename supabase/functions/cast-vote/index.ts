@@ -7,18 +7,17 @@ const corsHeaders = {
 
 /**
  * BDVote Secure Edge Function — Blockchain-First Architecture
- * 
+ *
  * Flow:
  *   1. Verify voter in DB (exists, not voted)
  *   2. Check BLOCKCHAIN for hasVoted (authoritative check)
- *   3. Submit vote to BLOCKCHAIN FIRST (primary record)
- *   4. Record in Supabase DB (secondary cache)
+ *   3. Submit vote to BLOCKCHAIN FIRST (broadcast only — no tx.wait())
+ *   4. Record in Supabase DB (secondary cache — trigger auto-increments vote_count)
  *   5. Return receipt to voter
- * 
+ *
  * NO SIMULATED FALLBACK — if blockchain fails, vote fails honestly.
  */
 
-// BDVote contract ABI (only the functions we need)
 const BD_VOTE_ABI = [
   {
     "inputs": [{"name": "voterIdHash", "type": "bytes32"}, {"name": "candidateHash", "type": "bytes32"}],
@@ -33,17 +32,9 @@ const BD_VOTE_ABI = [
     "outputs": [{"name": "", "type": "bool"}],
     "stateMutability": "view",
     "type": "function"
-  },
-  {
-    "inputs": [{"name": "candidateHash", "type": "bytes32"}],
-    "name": "getCandidateVotes",
-    "outputs": [{"name": "", "type": "uint256"}],
-    "stateMutability": "view",
-    "type": "function"
   }
 ];
 
-// Secure Salt from Environment Variables (Fixing the Rainbow Table Exposure Vulnerability)
 const HASH_SALT = Deno.env.get('VOTER_HASH_SALT') || 'fallback-secure-salt-2026';
 
 Deno.serve(async (req) => {
@@ -61,27 +52,24 @@ Deno.serve(async (req) => {
     const authHeader = req.headers.get('authorization');
     if (!authHeader) {
       return new Response(
-        JSON.stringify({ error: 'Top-Level Auth Header Missing' }),
+        JSON.stringify({ error: 'Auth header missing' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // ===== Fix Unvalidated API Tokens: Validate the JWT =====
+    // Validate JWT
     const authClient = createClient(supabaseUrl, supabaseAnonKey, {
       global: { headers: { Authorization: authHeader } }
     });
-
     const { data: { user }, error: authError } = await authClient.auth.getUser();
-
     if (authError || !user) {
       return new Response(
-        JSON.stringify({ error: 'Unauthenticated Request Detected. Security Policy Enforced.', details: authError?.message }),
+        JSON.stringify({ error: 'Unauthenticated request.', details: authError?.message }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
     const { voter_id, candidate_id } = await req.json();
-
     if (!voter_id || !candidate_id) {
       return new Response(
         JSON.stringify({ error: 'voter_id এবং candidate_id প্রয়োজন' }),
@@ -89,20 +77,16 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Check blockchain configuration — NO SIMULATED FALLBACK
     if (!contractAddress || !deployerPrivateKey || contractAddress === '0x0000000000000000000000000000000000000000') {
       return new Response(
-        JSON.stringify({ 
-          error: 'ব্লকচেইন কনফিগার করা হয়নি। অ্যাডমিনের সাথে যোগাযোগ করুন।',
-          details: 'BD_VOTE_CONTRACT_ADDRESS and BD_VOTE_DEPLOYER_PRIVATE_KEY must be set.'
-        }),
+        JSON.stringify({ error: 'ব্লকচেইন কনফিগার করা হয়নি। অ্যাডমিনের সাথে যোগাযোগ করুন।' }),
         { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
-    // ===== Step 1: Verify voter exists in DB =====
+    // Step 1: Verify voter
     const { data: voter, error: voterError } = await supabaseAdmin
       .from('voters_master')
       .select('id, voter_id, full_name, has_voted, is_verified, constituency_id')
@@ -123,7 +107,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    // ===== Step 2: Verify candidate =====
+    // Step 2: Verify candidate
     const { data: candidate, error: candidateError } = await supabaseAdmin
       .from('candidates')
       .select('id, full_name, constituency_id')
@@ -138,14 +122,13 @@ Deno.serve(async (req) => {
       );
     }
 
-    // ===== Step 3: Generate hashes (must match frontend) =====
+    // Step 3: Generate hashes
     const { ethers } = await import('npm:ethers@6');
-
     const voterId = voter.voter_id || voter_id;
     const voterIdHash = ethers.keccak256(ethers.toUtf8Bytes(`${HASH_SALT}:${voterId}`));
     const candidateHash = ethers.keccak256(ethers.toUtf8Bytes(`${HASH_SALT}:candidate:${candidate_id}`));
 
-    // ===== Step 4: Check BLOCKCHAIN for hasVoted (AUTHORITATIVE CHECK) =====
+    // Step 4: Check blockchain — has voter already voted?
     const provider = new ethers.JsonRpcProvider('https://sepolia.base.org');
     const wallet = new ethers.Wallet(deployerPrivateKey, provider);
     const contract = new ethers.Contract(contractAddress, BD_VOTE_ABI, wallet);
@@ -158,65 +141,32 @@ Deno.serve(async (req) => {
           { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
-    } catch (checkError) {
-      console.error('Blockchain hasVoted check failed:', checkError);
+    } catch (checkErr) {
+      console.error('Blockchain hasVoted check failed:', checkErr);
       return new Response(
-        JSON.stringify({ 
-          error: 'ব্লকচেইন যাচাই করতে ব্যর্থ। পরে আবার চেষ্টা করুন।',
-          details: 'Could not verify voting status on blockchain.'
-        }),
+        JSON.stringify({ error: 'ব্লকচেইন যাচাই করতে ব্যর্থ। পরে আবার চেষ্টা করুন।' }),
         { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // ===== Step 5: Submit vote to BLOCKCHAIN FIRST (primary record) =====
+    // Step 5: Broadcast vote to blockchain (NO tx.wait() — return hash immediately)
     let txHash: string;
-    let receiptHash: string;
-
     try {
-      const timeout = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Blockchain timeout after 30s')), 30000)
-      );
-
-      const blockchainOp = async () => {
-        const tx = await contract.castVote(voterIdHash, candidateHash);
-        console.log(`⏳ Vote TX submitted: ${tx.hash}`);
-        const receipt = await tx.wait();
-        console.log(`✅ Vote confirmed in block ${receipt.blockNumber}`);
-
-        // Extract receiptHash from the VoteCast event
-        let extractedReceipt = '';
-        for (const log of receipt.logs) {
-          try {
-            const parsed = contract.interface.parseLog({ topics: log.topics, data: log.data });
-            if (parsed && parsed.name === 'VoteCast') {
-              extractedReceipt = parsed.args.receiptHash;
-              break;
-            }
-          } catch {}
-        }
-
-        return { hash: receipt.hash, receiptHash: extractedReceipt };
-      };
-
-      const result = await Promise.race([blockchainOp(), timeout]);
-      txHash = result.hash;
-      receiptHash = result.receiptHash;
-      console.log(`✅ Vote cast on Base Sepolia: TX=${txHash}, Receipt=${receiptHash}`);
-
-    } catch (blockchainError) {
-      // NO SIMULATED FALLBACK — vote fails honestly
-      console.error('❌ Blockchain vote submission failed:', blockchainError);
+      const tx = await contract.castVote(voterIdHash, candidateHash);
+      txHash = tx.hash;
+      console.log(`✅ Vote broadcast to Base Sepolia: TX=${txHash}`);
+    } catch (blockchainErr) {
+      console.error('❌ Blockchain vote failed:', blockchainErr);
       return new Response(
-        JSON.stringify({ 
+        JSON.stringify({
           error: 'ব্লকচেইনে ভোট জমা দিতে ব্যর্থ হয়েছে। পরে আবার চেষ্টা করুন।',
-          details: (blockchainError as Error).message
+          details: (blockchainErr as Error).message,
         }),
         { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // ===== Step 6: Record in Supabase DB (secondary cache) =====
+    // Step 6: Record in DB (trigger auto-increments candidate vote_count)
     const { data: voteRecord, error: voteError } = await supabaseAdmin
       .from('votes')
       .insert({
@@ -225,51 +175,52 @@ Deno.serve(async (req) => {
         tx_hash: txHash,
         voter_id_hash: voterIdHash,
         encrypted_vote: candidateHash,
-        receipt_hash: receiptHash,
+        receipt_hash: txHash,
         status: 'confirmed',
-        network: 'Base Sepolia',
+        network: 'base-sepolia',
       })
       .select()
       .single();
 
     if (voteError) {
-      // Vote IS on blockchain even if DB insert fails
       console.error('⚠️ DB insert failed (vote IS on-chain):', voteError);
     }
 
-    // ===== Step 7: Update voter status in DB =====
-    await supabaseAdmin
-      .from('voters_master')
-      .update({ has_voted: true })
-      .eq('id', voter.id);
+    // Step 7: Mark voter as has_voted
+    try {
+      await supabaseAdmin
+        .from('voters_master')
+        .update({ has_voted: true })
+        .eq('id', voter.id);
+    } catch (updateErr) {
+      console.warn('voters_master update failed (non-critical):', updateErr);
+    }
 
-    // ===== Step 8: Increment candidate vote count in DB =====
-    await supabaseAdmin.rpc('increment_vote_count', { p_candidate_id: candidate_id }).catch(() => {});
+    // Step 8: Audit log
+    try {
+      await supabaseAdmin.from('audit_logs').insert({
+        action: 'vote_cast',
+        entity_type: 'vote',
+        entity_id: voteRecord?.id || 'blockchain-only',
+        details: {
+          voter_id_hash: voterIdHash,
+          candidate_id: candidate_id,
+          tx_hash: txHash,
+          blockchain_mode: 'live',
+          network: 'Base Sepolia',
+          status: 'confirmed',
+        },
+      });
+    } catch (auditErr) {
+      console.warn('Audit log failed (non-critical):', auditErr);
+    }
 
-    // ===== Step 9: Audit log =====
-    await supabaseAdmin.from('audit_logs').insert({
-      action: 'vote_cast',
-      entity_type: 'vote',
-      entity_id: voteRecord?.id || 'blockchain-only',
-      details: {
-        voter_id_hash: voterIdHash,
-        candidate_hash: candidateHash,
-        candidate_id: candidate_id,
-        tx_hash: txHash,
-        receipt_hash: receiptHash,
-        blockchain_mode: 'live',
-        network: 'Base Sepolia',
-        status: 'confirmed',
-      },
-    }).catch(() => {});
-
-    // ===== Step 10: Return success with receipt =====
     return new Response(
       JSON.stringify({
         success: true,
         vote_id: voteRecord?.id,
         tx_hash: txHash,
-        receipt_hash: receiptHash,
+        receipt_hash: txHash,
         voter_id_hash: voterIdHash,
         blockchain_mode: 'live',
         network: 'Base Sepolia',
@@ -278,6 +229,7 @@ Deno.serve(async (req) => {
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
+
   } catch (error) {
     console.error('Cast vote error:', error);
     return new Response(

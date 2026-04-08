@@ -20,7 +20,11 @@ const corsHeaders = {
 
 const BD_VOTE_ABI = [
   {
-    "inputs": [{"name": "voterIdHash", "type": "bytes32"}, {"name": "candidateHash", "type": "bytes32"}],
+    "inputs": [
+      {"name": "voterIdHash", "type": "bytes32"},
+      {"name": "candidateHash", "type": "bytes32"},
+      {"name": "candidateName", "type": "string"}
+    ],
     "name": "castVote",
     "outputs": [{"name": "receiptHash", "type": "bytes32"}],
     "stateMutability": "nonpayable",
@@ -152,7 +156,7 @@ Deno.serve(async (req) => {
     // Step 5: Broadcast vote to blockchain (NO tx.wait() — return hash immediately)
     let txHash: string;
     try {
-      const tx = await contract.castVote(voterIdHash, candidateHash);
+      const tx = await contract.castVote(voterIdHash, candidateHash, candidate.full_name);
       txHash = tx.hash;
       console.log(`✅ Vote broadcast to Base Sepolia: TX=${txHash}`);
     } catch (blockchainErr) {

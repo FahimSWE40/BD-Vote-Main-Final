@@ -33,6 +33,7 @@ contract BDVote {
     struct Vote {
         bytes32 voterIdHash;     // keccak256 hash of voter ID (privacy preserved)
         bytes32 candidateHash;   // keccak256 hash of candidate ID
+        string  candidateName;   // human-readable candidate name (visible on BaseScan)
         uint256 timestamp;       // block timestamp
         bytes32 receiptHash;     // unique receipt for voter verification
         address submittedBy;     // relayer wallet that submitted
@@ -54,6 +55,7 @@ contract BDVote {
     event VoteCast(
         bytes32 indexed voterIdHash,
         bytes32 indexed candidateHash,
+        string  candidateName,
         bytes32 receiptHash,
         uint256 timestamp,
         uint256 voteIndex
@@ -90,7 +92,8 @@ contract BDVote {
      */
     function castVote(
         bytes32 voterIdHash,
-        bytes32 candidateHash
+        bytes32 candidateHash,
+        string calldata candidateName
     ) external electionIsActive returns (bytes32 receiptHash) {
         // FR-12: One Vote Restriction — once voted, can NEVER vote again
         require(!hasVoted[voterIdHash], "This voter has already voted");
@@ -113,6 +116,7 @@ contract BDVote {
         votes.push(Vote({
             voterIdHash: voterIdHash,
             candidateHash: candidateHash,
+            candidateName: candidateName,
             timestamp: block.timestamp,
             receiptHash: receiptHash,
             submittedBy: msg.sender
@@ -121,7 +125,7 @@ contract BDVote {
         // Mark receipt as valid
         receiptExists[receiptHash] = true;
 
-        emit VoteCast(voterIdHash, candidateHash, receiptHash, block.timestamp, totalVotes - 1);
+        emit VoteCast(voterIdHash, candidateHash, candidateName, receiptHash, block.timestamp, totalVotes - 1);
 
         return receiptHash;
     }
@@ -179,13 +183,14 @@ contract BDVote {
     function getVote(uint256 index) external view returns (
         bytes32 voterIdHash,
         bytes32 candidateHash,
+        string memory candidateName,
         uint256 timestamp,
         bytes32 receiptHash,
         address submittedBy
     ) {
         require(index < votes.length, "Vote index out of bounds");
         Vote storage v = votes[index];
-        return (v.voterIdHash, v.candidateHash, v.timestamp, v.receiptHash, v.submittedBy);
+        return (v.voterIdHash, v.candidateHash, v.candidateName, v.timestamp, v.receiptHash, v.submittedBy);
     }
 
     /**

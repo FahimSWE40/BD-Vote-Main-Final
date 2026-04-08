@@ -10,16 +10,16 @@ import { ethers } from 'ethers';
 
 // BDVote Smart Contract ABI
 export const BD_VOTE_ABI = [
-  "function castVote(bytes32 voterIdHash, bytes32 candidateHash) external returns (bytes32 receiptHash)",
+  "function castVote(bytes32 voterIdHash, bytes32 candidateHash, string candidateName) external returns (bytes32 receiptHash)",
   "function checkHasVoted(bytes32 voterIdHash) external view returns (bool)",
   "function getVoteCount() external view returns (uint256)",
   "function getCandidateVotes(bytes32 candidateHash) external view returns (uint256)",
   "function getResults(bytes32[] calldata candidateHashes) external view returns (uint256[])",
   "function verifyReceipt(bytes32 receipt) external view returns (bool)",
-  "function getVote(uint256 index) external view returns (bytes32 voterIdHash, bytes32 candidateHash, uint256 timestamp, bytes32 receiptHash, address submittedBy)",
+  "function getVote(uint256 index) external view returns (bytes32 voterIdHash, bytes32 candidateHash, string candidateName, uint256 timestamp, bytes32 receiptHash, address submittedBy)",
   "function isElectionActive() external view returns (bool)",
   "function totalVotes() external view returns (uint256)",
-  "event VoteCast(bytes32 indexed voterIdHash, bytes32 indexed candidateHash, bytes32 receiptHash, uint256 timestamp, uint256 voteIndex)"
+  "event VoteCast(bytes32 indexed voterIdHash, bytes32 indexed candidateHash, string candidateName, bytes32 receiptHash, uint256 timestamp, uint256 voteIndex)"
 ];
 
 // Contract address on Base Sepolia

@@ -38,8 +38,8 @@
       ]
     },
     "E:\\BD Vote Final\\contracts\\BDVote.sol": {
-      "lastModificationDate": 1775654778565,
-      "contentHash": "c0c90cb9af925bd31e34bd72c4c2055e",
+      "lastModificationDate": 1775667282634,
+      "contentHash": "3d33a0e7c3e3dc2248c14ffaa75f9b40",
       "sourceName": "contracts/BDVote.sol",
       "solcConfig": {
         "version": "0.8.24",

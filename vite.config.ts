@@ -18,8 +18,8 @@ export default defineConfig({
       registerType: "autoUpdate",
       includeAssets: ["favicon.ico", "robots.txt"],
       manifest: {
-        name: "ইউনিভোট - ব্লকচেইন ই-ভোটিং",
-        short_name: "ইউনিভোট",
+        name: "BD Vote - ব্লকচেইন ই-ভোটিং",
+        short_name: "BD Vote",
         description: "বাংলাদেশের জন্য আধুনিক, নিরাপদ এবং স্বচ্ছ ডিজিটাল ভোটিং সমাধান প্রদান।",
         theme_color: "#135bec",
         background_color: "#ffffff",

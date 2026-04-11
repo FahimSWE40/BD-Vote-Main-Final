@@ -5,14 +5,9 @@ import {
   Download, 
   RefreshCw, 
   Shield, 
-  Sparkles,
-  ExternalLink,
-  CheckCircle,
-  Clock,
   Users,
   Vote,
-  BarChart3,
-  Loader2
+  BarChart3
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25,7 +20,7 @@ import { usePullToRefresh } from "@/hooks/use-pull-to-refresh";
 import { PullToRefreshIndicator } from "@/components/ui/pull-to-refresh";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { formatTxHash, getExplorerUrl, getOnChainCandidateVotes, getAllOnChainVotes, BD_VOTE_CONTRACT_ADDRESS } from "@/lib/blockchain";
+import { getOnChainCandidateVotes } from "@/lib/blockchain";
 
 const toBengaliNumerals = (num: string) => {
   const bengaliDigits = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];

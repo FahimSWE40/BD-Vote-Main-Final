@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
 import { 
   ShieldAlert, 
   MapPin, 
@@ -9,7 +8,6 @@ import {
   LogOut,
   RefreshCw,
   CheckCircle,
-  XCircle,
   Eye,
   Gavel
 } from 'lucide-react';
@@ -18,7 +16,6 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { Navbar } from '@/components/layout/Navbar';
 import { Footer } from '@/components/layout/Footer';
 
 export default function LawEnforcementDashboard() {

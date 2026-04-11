@@ -1,11 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
 import { 
   HardHat, 
   Terminal, 
   Server, 
-  Activity,
   LogOut,
   RefreshCw,
   Database,
@@ -19,7 +17,6 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { Navbar } from '@/components/layout/Navbar';
 import { Footer } from '@/components/layout/Footer';
 import { isBlockchainConfigured, BD_VOTE_CONTRACT_ADDRESS } from '@/lib/blockchain';
 

@@ -22,8 +22,13 @@ export const BD_VOTE_ABI = [
   "event VoteCast(bytes32 indexed voterIdHash, bytes32 indexed candidateHash, string candidateName, bytes32 receiptHash, uint256 timestamp, uint256 voteIndex)"
 ];
 
-// Contract address on Base Sepolia
-export const BD_VOTE_CONTRACT_ADDRESS = import.meta.env.VITE_BD_VOTE_CONTRACT_ADDRESS || "0x0000000000000000000000000000000000000000";
+// Contract address on Base Sepolia — hardcoded fallback matches deployed contract
+export const BD_VOTE_CONTRACT_ADDRESS =
+  import.meta.env.VITE_BD_VOTE_CONTRACT_ADDRESS ||
+  "0x0eCa67dCED1D02aDACA453Ac1e330B7b4beF25f9";
+
+// Hash salt — must match edge function
+export const HASH_SALT = "fallback-secure-salt-2026";
 
 // Base Sepolia RPC (chainId 84532)
 export const SEPOLIA_RPC_URL = "https://sepolia.base.org";
@@ -33,6 +38,71 @@ export const SEPOLIA_RPC_URL = "https://sepolia.base.org";
  */
 export function isBlockchainConfigured(): boolean {
   return BD_VOTE_CONTRACT_ADDRESS !== "0x0000000000000000000000000000000000000000";
+}
+
+/**
+ * Get on-chain vote counts for multiple candidates in one batch call
+ * @param candidates Array of { id, full_name }
+ * @returns Array of { id, full_name, onChainVotes }
+ */
+export async function getOnChainCandidateVotes(
+  candidates: { id: string; full_name: string }[]
+): Promise<{ id: string; full_name: string; onChainVotes: number }[]> {
+  try {
+    const provider = new ethers.JsonRpcProvider(SEPOLIA_RPC_URL);
+    const contract = new ethers.Contract(BD_VOTE_CONTRACT_ADDRESS, BD_VOTE_ABI, provider);
+
+    const hashes = candidates.map(c =>
+      ethers.keccak256(ethers.toUtf8Bytes(`${HASH_SALT}:candidate:${c.id}`))
+    );
+
+    const counts: bigint[] = await contract.getResults(hashes);
+
+    return candidates.map((c, i) => ({
+      id: c.id,
+      full_name: c.full_name,
+      onChainVotes: Number(counts[i] ?? 0),
+    }));
+  } catch (err) {
+    console.error('Failed to get on-chain candidate votes:', err);
+    return candidates.map(c => ({ id: c.id, full_name: c.full_name, onChainVotes: 0 }));
+  }
+}
+
+/**
+ * Get all votes from blockchain (returns array of vote records)
+ */
+export async function getAllOnChainVotes(): Promise<{
+  index: number;
+  voterIdHash: string;
+  candidateName: string;
+  timestamp: number;
+  txHash: string;
+}[]> {
+  try {
+    const provider = new ethers.JsonRpcProvider(SEPOLIA_RPC_URL);
+    const contract = new ethers.Contract(BD_VOTE_CONTRACT_ADDRESS, BD_VOTE_ABI, provider);
+    const total = Number(await contract.totalVotes());
+    const votes = [];
+    for (let i = 0; i < total; i++) {
+      try {
+        const [voterIdHash, , candidateName, timestamp, receiptHash] = await contract.getVote(i);
+        votes.push({
+          index: i,
+          voterIdHash,
+          candidateName,
+          timestamp: Number(timestamp),
+          txHash: receiptHash,
+        });
+      } catch {
+        // skip bad index
+      }
+    }
+    return votes;
+  } catch (err) {
+    console.error('Failed to get all on-chain votes:', err);
+    return [];
+  }
 }
 
 /**

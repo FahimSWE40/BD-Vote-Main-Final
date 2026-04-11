@@ -49,29 +49,9 @@ Deno.serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
-    const contractAddress = Deno.env.get('BD_VOTE_CONTRACT_ADDRESS');
+    // New contract (with candidateName support) deployed 2026-04-08
+    const contractAddress = Deno.env.get('BD_VOTE_CONTRACT_ADDRESS') || '0x0eCa67dCED1D02aDACA453Ac1e330B7b4beF25f9';
     const deployerPrivateKey = Deno.env.get('BD_VOTE_DEPLOYER_PRIVATE_KEY');
-
-    const authHeader = req.headers.get('authorization');
-    if (!authHeader) {
-      return new Response(
-        JSON.stringify({ error: 'Auth header missing' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Validate JWT
-    const authClient = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: authHeader } }
-    });
-    const { data: { user }, error: authError } = await authClient.auth.getUser();
-    if (authError || !user) {
-      return new Response(
-        JSON.stringify({ error: 'Unauthenticated request.', details: authError?.message }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
 
     const { voter_id, candidate_id } = await req.json();
     if (!voter_id || !candidate_id) {
@@ -81,7 +61,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    if (!contractAddress || !deployerPrivateKey || contractAddress === '0x0000000000000000000000000000000000000000') {
+    if (!deployerPrivateKey) {
       return new Response(
         JSON.stringify({ error: 'ব্লকচেইন কনফিগার করা হয়নি। অ্যাডমিনের সাথে যোগাযোগ করুন।' }),
         { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

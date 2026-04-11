@@ -1,10 +1,10 @@
 import { Link, useLocation } from "react-router-dom";
-import { 
-  LayoutDashboard, 
-  Vote, 
-  BarChart3, 
-  Shield, 
-  HelpCircle, 
+import {
+  LayoutDashboard,
+  Vote,
+  BarChart3,
+  Shield,
+  HelpCircle,
   LogOut,
   FileText,
   Info
@@ -67,8 +67,8 @@ export function DashboardSidebar() {
             <SidebarMenu>
               {mainNavItems.map((item) => (
                 <SidebarMenuItem key={item.label}>
-                  <SidebarMenuButton 
-                    asChild 
+                  <SidebarMenuButton
+                    asChild
                     isActive={isActive(item.href)}
                     tooltip={item.label}
                   >
@@ -89,7 +89,7 @@ export function DashboardSidebar() {
             <SidebarMenu>
               {resourceItems.map((item) => (
                 <SidebarMenuItem key={item.label}>
-                  <SidebarMenuButton 
+                  <SidebarMenuButton
                     asChild
                     isActive={isActive(item.href)}
                     tooltip={item.label}

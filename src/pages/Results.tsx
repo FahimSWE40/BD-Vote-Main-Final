@@ -25,7 +25,7 @@ import { usePullToRefresh } from "@/hooks/use-pull-to-refresh";
 import { PullToRefreshIndicator } from "@/components/ui/pull-to-refresh";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { formatTxHash, getExplorerUrl } from "@/lib/blockchain";
+import { formatTxHash, getExplorerUrl, getOnChainCandidateVotes, getAllOnChainVotes, BD_VOTE_CONTRACT_ADDRESS } from "@/lib/blockchain";
 
 const toBengaliNumerals = (num: string) => {
   const bengaliDigits = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
@@ -113,6 +113,23 @@ export default function Results() {
     refetchInterval: 30000,
   });
 
+  // On-chain data — fetched directly from smart contract
+  const { data: onChainVotes = [], isLoading: onChainLoading, refetch: refetchOnChain } = useQuery({
+    queryKey: ['results-onchain-votes'],
+    queryFn: () => getOnChainCandidateVotes(candidates.map(c => ({ id: c.id, full_name: c.full_name }))),
+    enabled: candidates.length > 0,
+    refetchInterval: 60000,
+    staleTime: 30000,
+  });
+
+  const { data: onChainHistory = [], isLoading: onChainHistoryLoading, refetch: refetchOnChainHistory } = useQuery({
+    queryKey: ['results-onchain-history'],
+    queryFn: getAllOnChainVotes,
+    refetchInterval: 60000,
+    staleTime: 30000,
+  });
+
+  const totalOnChainVotes = onChainVotes.reduce((sum, c) => sum + c.onChainVotes, 0);
   const totalVotes = candidates.reduce((sum, c) => sum + (c.vote_count || 0), 0);
 
   // Realtime subscription for live updates
@@ -137,6 +154,8 @@ export default function Results() {
       queryClient.invalidateQueries({ queryKey: ['results-candidates'] }),
       queryClient.invalidateQueries({ queryKey: ['results-transactions'] }),
       queryClient.invalidateQueries({ queryKey: ['results-voter-stats'] }),
+      queryClient.invalidateQueries({ queryKey: ['results-onchain-votes'] }),
+      queryClient.invalidateQueries({ queryKey: ['results-onchain-history'] }),
     ]);
     const now = new Date();
     setCurrentTime(toBengaliNumerals(now.toLocaleTimeString('en-GB', { hour12: false })));
@@ -481,6 +500,124 @@ export default function Results() {
                   <Button variant="link" className="text-primary text-xs sm:text-sm">
                     আরো ট্রানজ্যাকশন দেখুন
                   </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+
+          {/* Blockchain Live Vote Counts */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.45 }}
+            className="mt-6 sm:mt-8"
+          >
+            <Card>
+              <CardHeader className="p-4 sm:p-6 pb-2 sm:pb-4">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                      <Shield className="size-4 sm:size-5 text-primary" />
+                      ব্লকচেইন থেকে সরাসরি ভোট গণনা
+                    </CardTitle>
+                    <p className="text-xs sm:text-sm text-muted-foreground mt-1">
+                      স্মার্ট কন্ট্রাক্ট: <a href={`https://sepolia.basescan.org/address/${BD_VOTE_CONTRACT_ADDRESS}`} target="_blank" rel="noopener noreferrer" className="font-mono text-primary hover:underline">{BD_VOTE_CONTRACT_ADDRESS.slice(0,6)}...{BD_VOTE_CONTRACT_ADDRESS.slice(-4)}</a> · Base Sepolia
+                    </p>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={() => { refetchOnChain(); refetchOnChainHistory(); }} disabled={onChainLoading}>
+                    <RefreshCw className={cn("size-3.5 mr-1.5", onChainLoading && "animate-spin")} />
+                    রিফ্রেশ
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="p-4 sm:p-6 pt-2 sm:pt-4">
+                {/* Per-candidate on-chain counts */}
+                {onChainLoading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="size-6 animate-spin text-muted-foreground" />
+                    <span className="ml-2 text-sm text-muted-foreground">ব্লকচেইন থেকে ডেটা আনা হচ্ছে...</span>
+                  </div>
+                ) : (
+                  <div className="space-y-3 mb-6">
+                    <div className="grid grid-cols-3 text-xs text-muted-foreground font-medium pb-2 border-b border-border">
+                      <span>প্রার্থী</span>
+                      <span className="text-center">ব্লকচেইন ভোট</span>
+                      <span className="text-center">DB ভোট</span>
+                    </div>
+                    {onChainVotes.map((c) => {
+                      const dbCandidate = candidates.find(d => d.id === c.id);
+                      const dbVotes = dbCandidate?.vote_count || 0;
+                      const inSync = c.onChainVotes === dbVotes;
+                      return (
+                        <div key={c.id} className="grid grid-cols-3 items-center py-2 border-b border-border/50 last:border-0">
+                          <span className="text-sm font-medium truncate pr-2">{c.full_name}</span>
+                          <div className="flex items-center justify-center gap-1.5">
+                            <span className="text-lg font-bold text-primary">{formatBengaliNumber(c.onChainVotes)}</span>
+                          </div>
+                          <div className="flex items-center justify-center gap-1.5">
+                            <span className="text-lg font-bold">{formatBengaliNumber(dbVotes)}</span>
+                            {inSync ? (
+                              <CheckCircle className="size-3.5 text-success shrink-0" />
+                            ) : (
+                              <span className="text-[10px] text-warning bg-warning/10 px-1 rounded">sync</span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {onChainVotes.length === 0 && (
+                      <p className="text-center text-muted-foreground text-sm py-4">এখনো কোনো ভোট ব্লকচেইনে নেই</p>
+                    )}
+                    <div className="grid grid-cols-3 items-center pt-2 font-bold text-sm">
+                      <span>মোট</span>
+                      <span className="text-center text-primary">{formatBengaliNumber(totalOnChainVotes)}</span>
+                      <span className="text-center">{formatBengaliNumber(totalVotes)}</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* On-chain vote history */}
+                <div>
+                  <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                    <Sparkles className="size-4 text-primary" />
+                    ব্লকচেইন ভোটের ইতিহাস
+                  </h4>
+                  {onChainHistoryLoading ? (
+                    <div className="flex items-center justify-center py-6">
+                      <Loader2 className="size-5 animate-spin text-muted-foreground" />
+                    </div>
+                  ) : onChainHistory.length === 0 ? (
+                    <p className="text-center text-muted-foreground text-sm py-4">ব্লকচেইনে কোনো ভোট নেই</p>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="text-left text-xs text-muted-foreground border-b border-border">
+                            <th className="pb-2 font-medium">#</th>
+                            <th className="pb-2 font-medium">প্রার্থী</th>
+                            <th className="pb-2 font-medium">সময়</th>
+                            <th className="pb-2 font-medium">ভোটার হ্যাশ</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border">
+                          {onChainHistory.map((v) => (
+                            <tr key={v.index} className="hover:bg-muted/40">
+                              <td className="py-2 text-muted-foreground">#{toBengaliNumerals(String(v.index + 1))}</td>
+                              <td className="py-2 font-medium">{v.candidateName || '—'}</td>
+                              <td className="py-2 text-muted-foreground text-xs">
+                                {v.timestamp ? new Date(v.timestamp * 1000).toLocaleString('bn-BD') : '—'}
+                              </td>
+                              <td className="py-2">
+                                <span className="font-mono text-xs text-muted-foreground">
+                                  {v.voterIdHash ? `${v.voterIdHash.slice(0, 8)}...${v.voterIdHash.slice(-4)}` : '—'}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
